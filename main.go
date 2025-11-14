@@ -64,6 +64,7 @@ func main() {
 	mux.HandleFunc("/api/policy/set", handler.HandleSetPolicy)
 	mux.HandleFunc("/api/sources", handler.HandleSources)
 	mux.HandleFunc("/api/save", handler.HandleSave)
+	mux.HandleFunc("/api/search", handler.HandleSearch)
 
 	port := ":8080"
 	fmt.Printf("\nStarting web interface: http://localhost%s\n", port)

@@ -2,6 +2,8 @@
 let currentCategory = null;
 let currentPolicy = null;
 let categoriesData = { user: [], computer: [] };
+let searchDebounceTimer = null;
+let currentSearchResults = null;
 
 // On page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -830,6 +832,138 @@ window.onclick = function(event) {
     const modal = document.getElementById('policy-edit-modal');
     if (event.target === modal) {
         closeModal();
+    }
+}
+
+// ======== SEARCH FUNCTIONALITY ========
+
+// Handle search key press with debouncing
+function handleSearchKeyPress(event, section) {
+    const query = event.target.value.trim();
+    
+    // Clear previous timer
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+    }
+    
+    // If empty, clear search results
+    if (query === '') {
+        clearSearchResults();
+        return;
+    }
+    
+    // Debounce: wait 500ms after user stops typing
+    searchDebounceTimer = setTimeout(() => {
+        performSearch(query, section);
+    }, 500);
+}
+
+// Perform search
+async function performSearch(query, section) {
+    if (!query) return;
+    
+    try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        if (!response.ok) {
+            throw new Error('Search failed');
+        }
+        
+        const data = await response.json();
+        currentSearchResults = data;
+        
+        // Display results based on section
+        displaySearchResults(data, section);
+        
+    } catch (error) {
+        console.error('Search error:', error);
+        showError('Arama başarısız oldu');
+    }
+}
+
+// Display search results
+function displaySearchResults(data, section) {
+    const policiesList = document.getElementById('policies');
+    const infoPanel = document.getElementById('policy-info');
+    
+    // Determine which results to show
+    let results = [];
+    let sectionName = '';
+    
+    if (section === 'user') {
+        results = data.user || [];
+        sectionName = 'Kullanıcı';
+    } else if (section === 'computer') {
+        results = data.computer || [];
+        sectionName = 'Bilgisayar';
+    }
+    
+    // Update info panel
+    infoPanel.innerHTML = `
+        <h3>🔍 Arama Sonuçları</h3>
+        <p><strong>${results.length}</strong> ${sectionName.toLowerCase()} politikası bulundu.</p>
+        <p style="color: #666; font-size: 14px;">Arama: "${escapeHtml(data.query)}"</p>
+    `;
+    
+    // Clear and show results
+    policiesList.innerHTML = '';
+    
+    if (results.length === 0) {
+        policiesList.innerHTML = `<p style="padding: 20px; text-align: center; color: #666;">
+            Bu bölümde sonuç bulunamadı.
+        </p>`;
+        return;
+    }
+    
+    // Render each result
+    results.forEach(policy => {
+        const div = document.createElement('div');
+        div.className = 'policy-item search-result';
+        div.onclick = () => openPolicyEditor(policy.id);
+        
+        const stateClass = policy.state.toLowerCase().replace(' ', '-');
+        
+        div.innerHTML = `
+            <h4>⚙️ ${escapeHtml(policy.name)}</h4>
+            <p>${escapeHtml(policy.description || 'Açıklama yok')}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <div>
+                    <span class="policy-state ${stateClass}">${policy.state}</span>
+                    <small style="color: #888; margin-left: 10px;">${policy.section}</small>
+                </div>
+                <small style="color: #667eea; font-size: 11px;">
+                    📁 ${escapeHtml(policy.categoryName || 'Kategori yok')}
+                </small>
+            </div>
+        `;
+        
+        policiesList.appendChild(div);
+    });
+}
+
+// Clear search results
+function clearSearchResults() {
+    currentSearchResults = null;
+    
+    // Clear search inputs
+    const userInput = document.getElementById('user-search-input');
+    const computerInput = document.getElementById('computer-search-input');
+    
+    if (userInput) userInput.value = '';
+    if (computerInput) computerInput.value = '';
+    
+    // Clear policies list
+    const policiesList = document.getElementById('policies');
+    const infoPanel = document.getElementById('policy-info');
+    
+    policiesList.innerHTML = '<p>Bir kategori seçin veya arama yapın.</p>';
+    infoPanel.innerHTML = `
+        <h3>Info Panel</h3>
+        <p>Select a category or policy.</p>
+    `;
+    
+    // If a category was selected, reload its policies
+    if (currentCategory) {
+        loadPolicies(currentCategory);
     }
 }
 

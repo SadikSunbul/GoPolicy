@@ -492,3 +492,30 @@ footer {
     background: #667eea;
 }
 
+/* ========== SEARCH STYLES ========== */
+.search-container {
+    background: #f8f9ff;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #e0e5ff;
+}
+
+.search-box input {
+    transition: all 0.3s ease;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.policy-item.search-result {
+    border-left: 3px solid #667eea;
+}
+
+.policy-item.search-result:hover {
+    border-left-color: #764ba2;
+}
+

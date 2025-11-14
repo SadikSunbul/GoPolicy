@@ -58,3 +58,22 @@ type CategoriesResponse struct {
 	User     []*CategoryNode `json:"user"`
 	Computer []*CategoryNode `json:"computer"`
 }
+
+// SearchResultItem represents a single policy search result.
+type SearchResultItem struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	State        string `json:"state"`
+	Section      string `json:"section"`
+	CategoryID   string `json:"categoryId"`
+	CategoryName string `json:"categoryName"`
+}
+
+// SearchResponse represents the response with search results grouped by section.
+type SearchResponse struct {
+	User     []SearchResultItem `json:"user"`
+	Computer []SearchResultItem `json:"computer"`
+	Query    string             `json:"query"`
+	Total    int                `json:"total"`
+}

@@ -18,6 +18,40 @@
         <div class="main-layout">
             <aside class="sidebar">
                 <h2>Categories</h2>
+                
+                <!-- Search Section -->
+                <div class="search-container">
+                    <h3 style="margin: 10px 0; color: #667eea; font-size: 14px;">🔍 Politika Ara</h3>
+                    
+                    <!-- User Search -->
+                    <div class="search-box">
+                        <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">
+                            👤 Kullanıcı Politikaları
+                        </label>
+                        <input 
+                            type="text" 
+                            id="user-search-input" 
+                            placeholder="Kullanıcı politikaları ara..." 
+                            onkeyup="handleSearchKeyPress(event, 'user')"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                    </div>
+                    
+                    <!-- Computer Search -->
+                    <div class="search-box" style="margin-top: 15px;">
+                        <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">
+                            🖥️ Bilgisayar Politikaları
+                        </label>
+                        <input 
+                            type="text" 
+                            id="computer-search-input" 
+                            placeholder="Bilgisayar politikaları ara..." 
+                            onkeyup="handleSearchKeyPress(event, 'computer')"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                    </div>
+                </div>
+                
+                <hr style="margin: 15px 0; border: none; border-top: 1px solid #eee;">
+                
                 <div id="categories-tree"></div>
             </aside>
 

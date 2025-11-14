@@ -198,6 +198,82 @@ func (h *PolicyHandler) HandleSave(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleSearch searches policies by name or description
+func (h *PolicyHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		respondError(w, http.StatusBadRequest, "Search query required")
+		return
+	}
+
+	// Normalize query for case-insensitive search
+	queryLower := strings.ToLower(query)
+
+	var userResults []SearchResultItem
+	var computerResults []SearchResultItem
+
+	// Search through all policies
+	for _, pol := range h.workspace.Policies {
+		// Check if query matches name or description (case-insensitive)
+		nameLower := strings.ToLower(pol.DisplayName)
+		descLower := strings.ToLower(pol.DisplayExplanation)
+
+		if !strings.Contains(nameLower, queryLower) && !strings.Contains(descLower, queryLower) {
+			continue
+		}
+
+		// Get policy state
+		state, _, err := policy.GetPolicyState(h.source, pol.RawPolicy)
+		if err != nil {
+			// Skip policies with errors
+			continue
+		}
+
+		// Get category information
+		categoryName := ""
+		categoryID := ""
+		if pol.Category != nil {
+			categoryName = pol.Category.DisplayName
+			categoryID = pol.Category.UniqueID
+		}
+
+		// Create search result item
+		item := SearchResultItem{
+			ID:           pol.UniqueID,
+			Name:         pol.DisplayName,
+			Description:  pol.DisplayExplanation,
+			State:        state.String(),
+			Section:      sectionName(pol.RawPolicy.Section),
+			CategoryID:   categoryID,
+			CategoryName: categoryName,
+		}
+
+		// Add to appropriate section
+		section := pol.RawPolicy.Section
+		if section == policy.User || section == policy.Both {
+			userResults = append(userResults, item)
+		}
+		if section == policy.Machine || section == policy.Both {
+			computerResults = append(computerResults, item)
+		}
+	}
+
+	// Sort results by name
+	sort.Slice(userResults, func(i, j int) bool {
+		return userResults[i].Name < userResults[j].Name
+	})
+	sort.Slice(computerResults, func(i, j int) bool {
+		return computerResults[i].Name < computerResults[j].Name
+	})
+
+	respondSuccess(w, SearchResponse{
+		User:     userResults,
+		Computer: computerResults,
+		Query:    query,
+		Total:    len(userResults) + len(computerResults),
+	})
+}
+
 // hasPoliciesInSection checks if a category (or any of its children) has policies in the given section
 func hasPoliciesInSection(cat *policy.PolicyPlusCategory, section policy.AdmxPolicySection) bool {
 	// Check direct policies
