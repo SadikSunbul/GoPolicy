@@ -43,14 +43,27 @@ func (h *PolicyHandler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PolicyHandler) HandleCategories(w http.ResponseWriter, r *http.Request) {
-	var roots []*CategoryNode
+	var userRoots []*CategoryNode
+	var computerRoots []*CategoryNode
+
 	for _, cat := range h.workspace.Categories {
-		roots = append(roots, buildCategoryTree(cat))
+		// Check if category has user policies
+		if hasPoliciesInSection(cat, policy.User) {
+			userRoots = append(userRoots, buildCategoryTreeForSection(cat, policy.User))
+		}
+		// Check if category has computer policies
+		if hasPoliciesInSection(cat, policy.Machine) {
+			computerRoots = append(computerRoots, buildCategoryTreeForSection(cat, policy.Machine))
+		}
 	}
 
-	sortCategoryNodes(roots)
+	sortCategoryNodes(userRoots)
+	sortCategoryNodes(computerRoots)
 
-	respondSuccess(w, roots)
+	respondSuccess(w, CategoriesResponse{
+		User:     userRoots,
+		Computer: computerRoots,
+	})
 }
 
 func (h *PolicyHandler) HandlePolicies(w http.ResponseWriter, r *http.Request) {
@@ -185,6 +198,52 @@ func (h *PolicyHandler) HandleSave(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// hasPoliciesInSection checks if a category (or any of its children) has policies in the given section
+func hasPoliciesInSection(cat *policy.PolicyPlusCategory, section policy.AdmxPolicySection) bool {
+	// Check direct policies
+	for _, pol := range cat.Policies {
+		if pol.RawPolicy.Section == section || pol.RawPolicy.Section == policy.Both {
+			return true
+		}
+	}
+	// Check children
+	for _, child := range cat.Children {
+		if hasPoliciesInSection(child, section) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildCategoryTreeForSection builds a category tree filtered by section
+func buildCategoryTreeForSection(cat *policy.PolicyPlusCategory, section policy.AdmxPolicySection) *CategoryNode {
+	// Count policies in this section
+	policyCount := 0
+	for _, pol := range cat.Policies {
+		if pol.RawPolicy.Section == section || pol.RawPolicy.Section == policy.Both {
+			policyCount++
+		}
+	}
+
+	node := &CategoryNode{
+		ID:          cat.UniqueID,
+		Name:        cat.DisplayName,
+		Description: cat.DisplayExplanation,
+		Children:    []*CategoryNode{},
+		PolicyCount: policyCount,
+	}
+
+	// Add children that have policies in this section
+	for _, child := range cat.Children {
+		if hasPoliciesInSection(child, section) {
+			node.Children = append(node.Children, buildCategoryTreeForSection(child, section))
+		}
+	}
+	sortCategoryNodes(node.Children)
+	return node
+}
+
+// buildCategoryTree builds a category tree without section filtering (kept for backward compatibility if needed)
 func buildCategoryTree(cat *policy.PolicyPlusCategory) *CategoryNode {
 	node := &CategoryNode{
 		ID:          cat.UniqueID,

@@ -1,7 +1,7 @@
 // Global variables
 let currentCategory = null;
 let currentPolicy = null;
-let categories = [];
+let categoriesData = { user: [], computer: [] };
 
 // On page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -13,7 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadCategories() {
     try {
         const response = await fetch('/api/categories');
-        categories = await response.json();
+        const data = await response.json();
+        categoriesData = {
+            user: data.user || [],
+            computer: data.computer || []
+        };
         renderCategories();
     } catch (error) {
         console.error('Failed to load categories:', error);
@@ -26,14 +30,74 @@ function renderCategories() {
     const tree = document.getElementById('categories-tree');
     tree.innerHTML = '';
     
-    if (categories.length === 0) {
-        tree.innerHTML = '<p class="loading">Loading categories...</p>';
-        return;
-    }
+    // User Configuration Section
+    const userSection = document.createElement('div');
+    userSection.className = 'category-section';
+    const userHeader = document.createElement('div');
+    userHeader.className = 'category-section-header';
+    userHeader.innerHTML = '👤 Kullanıcı Yapılandırması';
+    userHeader.onclick = () => toggleSection(userSection);
+    userSection.appendChild(userHeader);
     
-    categories.forEach(cat => {
-        tree.appendChild(renderCategoryNode(cat));
-    });
+    const userContent = document.createElement('div');
+    userContent.className = 'category-section-content';
+    userContent.style.display = 'block'; // Start expanded
+    if (categoriesData.user.length === 0) {
+        userContent.innerHTML = '<p class="loading">Kullanıcı kategorileri yükleniyor...</p>';
+    } else {
+        categoriesData.user.forEach(cat => {
+            userContent.appendChild(renderCategoryNode(cat));
+        });
+    }
+    userSection.appendChild(userContent);
+    userSection.classList.add('expanded'); // Mark as expanded
+    userHeader.innerHTML = '▼ 👤 Kullanıcı Yapılandırması'; // Add arrow for expanded state
+    tree.appendChild(userSection);
+    
+    // Computer Configuration Section
+    const computerSection = document.createElement('div');
+    computerSection.className = 'category-section';
+    const computerHeader = document.createElement('div');
+    computerHeader.className = 'category-section-header';
+    computerHeader.innerHTML = '▼ 🖥️ Bilgisayar Yapılandırması';
+    computerHeader.onclick = () => toggleSection(computerSection);
+    computerSection.appendChild(computerHeader);
+    
+    const computerContent = document.createElement('div');
+    computerContent.className = 'category-section-content';
+    computerContent.style.display = 'block'; // Start expanded
+    if (categoriesData.computer.length === 0) {
+        computerContent.innerHTML = '<p class="loading">Bilgisayar kategorileri yükleniyor...</p>';
+    } else {
+        categoriesData.computer.forEach(cat => {
+            computerContent.appendChild(renderCategoryNode(cat));
+        });
+    }
+    computerSection.appendChild(computerContent);
+    computerSection.classList.add('expanded'); // Mark as expanded
+    tree.appendChild(computerSection);
+}
+
+// Toggle section expand/collapse
+function toggleSection(section) {
+    const content = section.querySelector('.category-section-content');
+    const header = section.querySelector('.category-section-header');
+    const isExpanded = content.style.display !== 'none';
+    
+    content.style.display = isExpanded ? 'none' : 'block';
+    section.classList.toggle('expanded', !isExpanded);
+    
+    // Update arrow icon - preserve emoji and text
+    let text = header.innerHTML;
+    if (text.includes('▼')) {
+        text = text.replace('▼', '▶');
+    } else if (text.includes('▶')) {
+        text = text.replace('▶', '▼');
+    } else {
+        // First time, add arrow at the beginning
+        text = (isExpanded ? '▶' : '▼') + ' ' + text;
+    }
+    header.innerHTML = text;
 }
 
 // Create category node
@@ -102,7 +166,7 @@ async function selectCategory(categoryId, event) {
     currentCategory = categoryId;
     
     // Show category information
-    const category = findCategory(categoryId, categories);
+    const category = findCategoryInAll(categoryId);
     if (category) {
         const infoPanel = document.getElementById('policy-info');
         infoPanel.innerHTML = `
@@ -116,8 +180,9 @@ async function selectCategory(categoryId, event) {
     await loadPolicies(categoryId);
 }
 
-// Find category (recursive)
+// Find category (recursive) - searches in both user and computer categories
 function findCategory(id, cats) {
+    if (!cats) return null;
     for (const cat of cats) {
         if (cat.id === id) return cat;
         if (cat.children) {
@@ -126,6 +191,14 @@ function findCategory(id, cats) {
         }
     }
     return null;
+}
+
+// Find category in all sections
+function findCategoryInAll(id) {
+    let found = findCategory(id, categoriesData.user);
+    if (found) return found;
+    found = findCategory(id, categoriesData.computer);
+    return found;
 }
 
 // Load policies

@@ -52,3 +52,9 @@ type EnumOptionInfo struct {
 	Index       int    `json:"index"`
 	DisplayName string `json:"displayName"`
 }
+
+// CategoriesResponse represents the response with categories grouped by section.
+type CategoriesResponse struct {
+	User     []*CategoryNode `json:"user"`
+	Computer []*CategoryNode `json:"computer"`
+}

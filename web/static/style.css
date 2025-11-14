@@ -123,6 +123,40 @@ header p {
     font-size: 0.95em;
 }
 
+.category-section {
+    margin-bottom: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.category-section-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 15px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.category-section-header:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #653a91 100%);
+}
+
+.category-section.expanded .category-section-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.category-section-content {
+    background: white;
+    padding: 10px;
+    display: block;
+}
+
 .category-item {
     margin: 3px 0;
     user-select: none;
