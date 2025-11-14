@@ -49,12 +49,14 @@ func LoadPolFile(path string) (*PolFile, error) {
 	}
 
 	if len(data) < 8 {
-		return nil, fmt.Errorf("invalid pol file: too short")
+		// File is too short, return empty POL file
+		return &PolFile{path: path, Entries: []PolEntry{}}, nil
 	}
 
 	header := string(data[:8])
 	if header != PolHeader {
-		return nil, fmt.Errorf("invalid pol header: %s", header)
+		// Invalid header, return empty POL file
+		return &PolFile{path: path, Entries: []PolEntry{}}, nil
 	}
 
 	pol := &PolFile{path: path}
@@ -66,64 +68,115 @@ func LoadPolFile(path string) (*PolFile, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			// If we get an error other than EOF, the file might be corrupted
+			// Return what we have so far instead of failing completely
+			if len(pol.Entries) == 0 {
+				return nil, fmt.Errorf("pol file could not be loaded: %w", err)
+			}
+			// If we have some entries, return them and log a warning
+			break
 		}
 
 		if openBracket != PolEntryOpen {
+			// If we've read some entries, return them
+			if len(pol.Entries) > 0 {
+				break
+			}
 			return nil, fmt.Errorf("expected '[' character instead of: %c", openBracket)
 		}
 
 		// Read KeyName (null-terminated UTF-16LE)
 		keyName, err := readUTF16String(buf)
 		if err != nil {
+			// If we've read some entries, return them
+			if len(pol.Entries) > 0 {
+				break
+			}
 			return nil, fmt.Errorf("key could not be read: %w", err)
 		}
 
 		// Semicolon
 		var semi1 byte
-		binary.Read(buf, binary.LittleEndian, &semi1)
+		if err := binary.Read(buf, binary.LittleEndian, &semi1); err != nil {
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read semicolon after key: %w", err)
+		}
 
 		// Read ValueName
 		valueName, err := readUTF16String(buf)
 		if err != nil {
+			if len(pol.Entries) > 0 {
+				break
+			}
 			return nil, fmt.Errorf("value could not be read: %w", err)
 		}
 
 		// Semicolon
 		var semi2 byte
-		binary.Read(buf, binary.LittleEndian, &semi2)
+		if err := binary.Read(buf, binary.LittleEndian, &semi2); err != nil {
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read semicolon after value: %w", err)
+		}
 
 		// Type (DWORD)
 		var regType uint32
 		if err := binary.Read(buf, binary.LittleEndian, &regType); err != nil {
-			return nil, err
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read type: %w", err)
 		}
 
 		// Semicolon
 		var semi3 byte
-		binary.Read(buf, binary.LittleEndian, &semi3)
+		if err := binary.Read(buf, binary.LittleEndian, &semi3); err != nil {
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read semicolon after type: %w", err)
+		}
 
 		// Size (DWORD)
 		var dataSize uint32
 		if err := binary.Read(buf, binary.LittleEndian, &dataSize); err != nil {
-			return nil, err
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read size: %w", err)
 		}
 
 		// Semicolon
 		var semi4 byte
-		binary.Read(buf, binary.LittleEndian, &semi4)
+		if err := binary.Read(buf, binary.LittleEndian, &semi4); err != nil {
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read semicolon after size: %w", err)
+		}
 
 		// Data
 		entryData := make([]byte, dataSize)
 		if dataSize > 0 {
 			if _, err := io.ReadFull(buf, entryData); err != nil {
-				return nil, err
+				if len(pol.Entries) > 0 {
+					break
+				}
+				return nil, fmt.Errorf("failed to read data: %w", err)
 			}
 		}
 
 		// ']'
 		var closeBracket byte
-		binary.Read(buf, binary.LittleEndian, &closeBracket)
+		if err := binary.Read(buf, binary.LittleEndian, &closeBracket); err != nil {
+			if len(pol.Entries) > 0 {
+				break
+			}
+			return nil, fmt.Errorf("failed to read closing bracket: %w", err)
+		}
 
 		pol.Entries = append(pol.Entries, PolEntry{
 			KeyName:   keyName,

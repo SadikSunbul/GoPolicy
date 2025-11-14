@@ -56,7 +56,8 @@ func updatePolFile(section AdmxPolicySection, policy *AdmxPolicy, state PolicySt
 
 	pol, err := LoadPolFile(polPath)
 	if err != nil {
-		return fmt.Errorf("pol file could not be loaded: %w", err)
+		// If POL file is corrupted or can't be loaded, create a new empty one
+		pol = &PolFile{path: polPath, Entries: []PolEntry{}}
 	}
 
 	switch state {
