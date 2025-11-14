@@ -124,6 +124,7 @@ type PolicyElement interface {
 	GetRegistryKey() string
 	GetRegistryValue() string
 	GetElementType() string
+	GetBase() *BasePolicyElement
 }
 
 // BasePolicyElement base policy element
@@ -135,11 +136,12 @@ type BasePolicyElement struct {
 	ElementType     string
 }
 
-func (b *BasePolicyElement) GetID() string              { return b.ID }
-func (b *BasePolicyElement) GetClientExtension() string { return b.ClientExtension }
-func (b *BasePolicyElement) GetRegistryKey() string     { return b.RegistryKey }
-func (b *BasePolicyElement) GetRegistryValue() string   { return b.RegistryValue }
-func (b *BasePolicyElement) GetElementType() string     { return b.ElementType }
+func (b *BasePolicyElement) GetID() string               { return b.ID }
+func (b *BasePolicyElement) GetClientExtension() string  { return b.ClientExtension }
+func (b *BasePolicyElement) GetRegistryKey() string      { return b.RegistryKey }
+func (b *BasePolicyElement) GetRegistryValue() string    { return b.RegistryValue }
+func (b *BasePolicyElement) GetElementType() string      { return b.ElementType }
+func (b *BasePolicyElement) GetBase() *BasePolicyElement { return b }
 
 // DecimalPolicyElement decimal element
 type DecimalPolicyElement struct {

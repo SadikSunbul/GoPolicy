@@ -366,6 +366,11 @@ func (b *AdmxBundle) resolveString(displayCode string, admx *AdmxFile) string {
 	return displayCode
 }
 
+// ResolveString resolves a string code from ADML string table (public method)
+func (b *AdmxBundle) ResolveString(displayCode string, admx *AdmxFile) string {
+	return b.resolveString(displayCode, admx)
+}
+
 func (b *AdmxBundle) resolvePresentation(displayCode string, admx *AdmxFile) *Presentation {
 	if !strings.HasPrefix(displayCode, "$(presentation.") {
 		return nil

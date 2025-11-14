@@ -45,13 +45,3 @@ type PolicyPlusPolicy struct {
 	Presentation       *Presentation
 	RawPolicy          *AdmxPolicy
 }
-
-// PolicyState policy state
-type PolicyState int
-
-const (
-	NotConfigured PolicyState = iota
-	Disabled
-	Enabled
-	Unknown
-)

@@ -33,7 +33,7 @@ func main() {
 
 	fmt.Printf("Loading ADMX files: %s\n", admxPath)
 	if _, err := os.Stat(admxPath); err == nil {
-		languageCode := getSystemLanguage()
+		languageCode := "tr-TR" //getSystemLanguage()
 		fmt.Printf("Using language: %s\n", languageCode)
 		failures, err := workspace.LoadFolder(admxPath, languageCode)
 		if err != nil {

@@ -13,12 +13,19 @@ import (
 type PolicyHandler struct {
 	workspace *policy.AdmxBundle
 	templates *template.Template
+	source    policy.PolicySource
 }
 
 // NewPolicyHandler creates a new handler
 func NewPolicyHandler(workspace *policy.AdmxBundle) *PolicyHandler {
+	// Create registry source for Machine policies (HKLM)
+	machineSource, _ := policy.NewRegistrySource(policy.Machine)
+
+	// For now, use machine source for both user and machine policies
+	// In a full implementation, you'd have separate sources
 	return &PolicyHandler{
 		workspace: workspace,
+		source:    machineSource,
 	}
 }
 
@@ -161,11 +168,15 @@ func (h *PolicyHandler) HandlePolicies(w http.ResponseWriter, r *http.Request) {
 			section = "User"
 		}
 
+		// Get current policy state
+		state, _, _ := policy.GetPolicyState(h.source, pol.RawPolicy)
+		stateStr := state.String()
+
 		items = append(items, PolicyItem{
 			ID:          pol.UniqueID,
 			Name:        pol.DisplayName,
 			Description: pol.DisplayExplanation,
-			State:       "Not Configured",
+			State:       stateStr,
 			Section:     section,
 		})
 	}
@@ -186,13 +197,23 @@ func (h *PolicyHandler) HandlePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type EnumOptionInfo struct {
+		Index       int    `json:"index"`
+		DisplayName string `json:"displayName"`
+	}
+
 	type ElementInfo struct {
-		ID           string      `json:"id"`
-		Type         string      `json:"type"`
-		Label        string      `json:"label"`
-		Required     bool        `json:"required"`
-		DefaultValue interface{} `json:"defaultValue,omitempty"`
-		Options      []string    `json:"options,omitempty"`
+		ID           string                 `json:"id"`
+		Type         string                 `json:"type"`
+		Label        string                 `json:"label"`
+		Required     bool                   `json:"required"`
+		DefaultValue interface{}            `json:"defaultValue,omitempty"`
+		Options      []EnumOptionInfo       `json:"options,omitempty"`
+		MinValue     *uint32                `json:"minValue,omitempty"`
+		MaxValue     *uint32                `json:"maxValue,omitempty"`
+		MaxLength    *int                   `json:"maxLength,omitempty"`
+		Description  string                 `json:"description,omitempty"`
+		Metadata     map[string]interface{} `json:"metadata,omitempty"`
 	}
 
 	type PolicyDetail struct {
@@ -205,11 +226,14 @@ func (h *PolicyHandler) HandlePolicy(w http.ResponseWriter, r *http.Request) {
 		RegistryKey string        `json:"registryKey"`
 	}
 
+	// Get current policy state and options
+	state, options, _ := policy.GetPolicyState(h.source, pol.RawPolicy)
+
 	detail := PolicyDetail{
 		ID:          pol.UniqueID,
 		Name:        pol.DisplayName,
 		Description: pol.DisplayExplanation,
-		State:       "Not Configured",
+		State:       state.String(),
 		Elements:    []ElementInfo{},
 		RegistryKey: pol.RawPolicy.RegistryKey,
 	}
@@ -237,17 +261,29 @@ func (h *PolicyHandler) HandlePolicy(w http.ResponseWriter, r *http.Request) {
 					if presElem.GetID() == elem.GetID() {
 						switch pe := presElem.(type) {
 						case *policy.TextBoxPresentationElement:
-							elemInfo.Label = pe.Label
+							elemInfo.Label = resolveStringCode(pe.Label, pol.RawPolicy.DefinedIn, h.workspace)
+							if pe.DefaultValue != "" {
+								elemInfo.DefaultValue = resolveStringCode(pe.DefaultValue, pol.RawPolicy.DefinedIn, h.workspace)
+							}
 						case *policy.NumericBoxPresentationElement:
-							elemInfo.Label = pe.Label
+							elemInfo.Label = resolveStringCode(pe.Label, pol.RawPolicy.DefinedIn, h.workspace)
+							if pe.DefaultValue != 0 {
+								elemInfo.DefaultValue = pe.DefaultValue
+							}
 						case *policy.CheckBoxPresentationElement:
-							elemInfo.Label = pe.Text
+							elemInfo.Label = resolveStringCode(pe.Text, pol.RawPolicy.DefinedIn, h.workspace)
+							elemInfo.DefaultValue = pe.DefaultState
 						case *policy.ComboBoxPresentationElement:
-							elemInfo.Label = pe.Label
+							elemInfo.Label = resolveStringCode(pe.Label, pol.RawPolicy.DefinedIn, h.workspace)
+							if pe.DefaultText != "" {
+								elemInfo.DefaultValue = resolveStringCode(pe.DefaultText, pol.RawPolicy.DefinedIn, h.workspace)
+							}
 						case *policy.DropDownPresentationElement:
-							elemInfo.Label = pe.Label
+							elemInfo.Label = resolveStringCode(pe.Label, pol.RawPolicy.DefinedIn, h.workspace)
 						case *policy.ListPresentationElement:
-							elemInfo.Label = pe.Label
+							elemInfo.Label = resolveStringCode(pe.Label, pol.RawPolicy.DefinedIn, h.workspace)
+						case *policy.MultiTextPresentationElement:
+							elemInfo.Label = resolveStringCode(pe.Label, pol.RawPolicy.DefinedIn, h.workspace)
 						}
 					}
 				}
@@ -258,24 +294,79 @@ func (h *PolicyHandler) HandlePolicy(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Special settings based on type
+			elemInfo.Metadata = make(map[string]interface{})
 			switch elem.GetElementType() {
 			case "text":
 				textElem := elem.(*policy.TextPolicyElement)
 				elemInfo.Required = textElem.Required
+				if textElem.MaxLength > 0 {
+					elemInfo.MaxLength = &textElem.MaxLength
+				}
+				elemInfo.Metadata["expandable"] = textElem.RegExpandSz
+				// Set current value if available
+				if val, ok := options[elemInfo.ID]; ok {
+					if str, ok := val.(string); ok {
+						elemInfo.DefaultValue = str
+					}
+				}
 			case "decimal":
 				decElem := elem.(*policy.DecimalPolicyElement)
 				elemInfo.Required = decElem.Required
+				if decElem.Minimum > 0 || decElem.Maximum < ^uint32(0) {
+					elemInfo.MinValue = &decElem.Minimum
+					if decElem.Maximum < ^uint32(0) {
+						elemInfo.MaxValue = &decElem.Maximum
+					}
+				}
+				elemInfo.Metadata["storeAsText"] = decElem.StoreAsText
+				// Set current value if available
+				if val, ok := options[elemInfo.ID]; ok {
+					if num, ok := val.(uint32); ok {
+						elemInfo.DefaultValue = num
+					} else if num, ok := val.(int); ok {
+						elemInfo.DefaultValue = uint32(num)
+					}
+				}
+			case "boolean":
+				boolElem := elem.(*policy.BooleanPolicyElement)
+				elemInfo.Metadata["hasAffectedRegistry"] = (boolElem.AffectedRegistry != nil)
+				// Set current value if available
+				if val, ok := options[elemInfo.ID]; ok {
+					if b, ok := val.(bool); ok {
+						elemInfo.DefaultValue = b
+					}
+				}
 			case "enum":
 				enumElem := elem.(*policy.EnumPolicyElement)
 				elemInfo.Required = enumElem.Required
-				elemInfo.Options = []string{}
-				for _, item := range enumElem.Items {
-					// Resolve display code
-					optName := item.DisplayCode
-					if strings.HasPrefix(optName, "$(string.") {
-						optName = strings.TrimSuffix(strings.TrimPrefix(optName, "$(string."), ")")
+				elemInfo.Options = []EnumOptionInfo{}
+				for idx, item := range enumElem.Items {
+					// Resolve display code from string table
+					optName := resolveStringCode(item.DisplayCode, pol.RawPolicy.DefinedIn, h.workspace)
+					elemInfo.Options = append(elemInfo.Options, EnumOptionInfo{
+						Index:       idx,
+						DisplayName: optName,
+					})
+				}
+				// Set current value if available
+				if val, ok := options[elemInfo.ID]; ok {
+					if idx, ok := val.(int); ok {
+						elemInfo.DefaultValue = idx
 					}
-					elemInfo.Options = append(elemInfo.Options, optName)
+				}
+			case "list":
+				listElem := elem.(*policy.ListPolicyElement)
+				elemInfo.Metadata["hasPrefix"] = listElem.HasPrefix
+				elemInfo.Metadata["userProvidesNames"] = listElem.UserProvidesNames
+				// Set current value if available
+				if val, ok := options[elemInfo.ID]; ok {
+					elemInfo.DefaultValue = val
+				}
+			case "multiText":
+				elemInfo.Metadata["multiline"] = true
+				// Set current value if available
+				if val, ok := options[elemInfo.ID]; ok {
+					elemInfo.DefaultValue = val
 				}
 			}
 
@@ -297,38 +388,109 @@ func (h *PolicyHandler) HandleSetPolicy(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		PolicyID string                 `json:"policyId"`
 		State    string                 `json:"state"`
+		Section  string                 `json:"section,omitempty"` // "machine" or "user"
 		Options  map[string]interface{} `json:"options"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Invalid request: %v", err),
+		})
 		return
 	}
 
 	// Find policy
 	pol, ok := h.workspace.Policies[req.PolicyID]
 	if !ok {
-		http.Error(w, "Policy not found", http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Policy not found",
+		})
 		return
+	}
+
+	// Determine section - use request section if provided, otherwise use policy's section
+	var section policy.AdmxPolicySection
+	if req.Section != "" {
+		switch strings.ToLower(req.Section) {
+		case "machine":
+			section = policy.Machine
+		case "user":
+			section = policy.User
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Invalid section: machine or user",
+			})
+			return
+		}
+	} else {
+		// Use policy's default section
+		section = pol.RawPolicy.Section
+		if section == policy.Both {
+			// Default to Machine if Both
+			section = policy.Machine
+		}
 	}
 
 	// Convert state
 	var policyState policy.PolicyState
-	switch req.State {
-	case "Enabled":
-		policyState = policy.Enabled
-	case "Disabled":
-		policyState = policy.Disabled
-	case "NotConfigured":
-		policyState = policy.NotConfigured
+	switch strings.ToLower(req.State) {
+	case "enabled":
+		policyState = policy.PolicyStateEnabled
+	case "disabled":
+		policyState = policy.PolicyStateDisabled
+	case "notconfigured", "not configured":
+		policyState = policy.PolicyStateNotConfigured
 	default:
-		http.Error(w, "Invalid state", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid state: enabled, disabled or notconfigured",
+		})
 		return
 	}
 
-	// For now, just return success
-	// In real implementation, PolicySource will be used
-	fmt.Fprintf(w, `{"success": true, "message": "Policy set to %s: %s"}`, policyState, pol.DisplayName)
+	// Create registry source for the specified section
+	source, err := policy.NewRegistrySource(section)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Registry source creation failed: %v", err),
+		})
+		return
+	}
+
+	// Set policy state
+	if err := policy.SetPolicyState(source, pol.RawPolicy, policyState, req.Options); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Policy update failed: %v", err),
+		})
+		return
+	}
+
+	// Perform verification
+	verifyState, _, _ := policy.GetPolicyState(source, pol.RawPolicy)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":       true,
+		"message":       "Policy updated successfully",
+		"verifiedState": verifyState.String(),
+	})
 }
 
 // HandleSources returns policy sources
@@ -363,4 +525,9 @@ func (h *PolicyHandler) HandleSave(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Changes saved",
 	})
+}
+
+// resolveStringCode resolves a string code from ADML string table
+func resolveStringCode(code string, admx *policy.AdmxFile, workspace *policy.AdmxBundle) string {
+	return workspace.ResolveString(code, admx)
 }
