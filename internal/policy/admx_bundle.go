@@ -82,8 +82,14 @@ func NewAdmxBundle() *AdmxBundle {
 	}
 }
 
-// LoadFolder loads all ADMX files in a folder
-func (b *AdmxBundle) LoadFolder(path string, languageCode string) ([]*AdmxLoadFailure, error) {
+// LoadFolder loads all ADMX files in a folder. languageCodes is a preference
+// list; the loader will try each locale (and their base languages) until a
+// matching ADML dosyası bulunur.
+func (b *AdmxBundle) LoadFolder(path string, languageCodes ...string) ([]*AdmxLoadFailure, error) {
+	if len(languageCodes) == 0 {
+		languageCodes = []string{"en-US"}
+	}
+
 	failures := []*AdmxLoadFailure{}
 
 	err := filepath.WalkDir(path, func(filePath string, d fs.DirEntry, err error) error {
@@ -94,7 +100,7 @@ func (b *AdmxBundle) LoadFolder(path string, languageCode string) ([]*AdmxLoadFa
 			return nil
 		}
 		if strings.HasSuffix(strings.ToLower(filePath), ".admx") {
-			if fail := b.addSingleAdmx(filePath, languageCode); fail != nil {
+			if fail := b.addSingleAdmx(filePath, languageCodes); fail != nil {
 				failures = append(failures, fail)
 			}
 		}
@@ -109,17 +115,21 @@ func (b *AdmxBundle) LoadFolder(path string, languageCode string) ([]*AdmxLoadFa
 	return failures, nil
 }
 
-// LoadFile loads a single ADMX file
-func (b *AdmxBundle) LoadFile(path string, languageCode string) ([]*AdmxLoadFailure, error) {
+// LoadFile loads a single ADMX file using the provided locale preference list.
+func (b *AdmxBundle) LoadFile(path string, languageCodes ...string) ([]*AdmxLoadFailure, error) {
+	if len(languageCodes) == 0 {
+		languageCodes = []string{"en-US"}
+	}
+
 	failures := []*AdmxLoadFailure{}
-	if fail := b.addSingleAdmx(path, languageCode); fail != nil {
+	if fail := b.addSingleAdmx(path, languageCodes); fail != nil {
 		failures = append(failures, fail)
 	}
 	b.buildStructures()
 	return failures, nil
 }
 
-func (b *AdmxBundle) addSingleAdmx(admxPath string, languageCode string) *AdmxLoadFailure {
+func (b *AdmxBundle) addSingleAdmx(admxPath string, languageCodes []string) *AdmxLoadFailure {
 	// Load ADMX
 	admx, err := LoadAdmxFile(admxPath)
 	if err != nil {
@@ -139,36 +149,13 @@ func (b *AdmxBundle) addSingleAdmx(admxPath string, languageCode string) *AdmxLo
 		}
 	}
 
-	// Find ADML file
-	fileTitle := filepath.Base(admxPath)
-	dir := filepath.Dir(admxPath)
-
-	// First search in requested language
-	admlPath := filepath.Join(dir, languageCode, strings.TrimSuffix(fileTitle, ".admx")+".adml")
-
-	// If not found, try base language
-	if _, err := os.Stat(admlPath); os.IsNotExist(err) {
-		language := strings.Split(languageCode, "-")[0]
-
-		// Search in subdirectories
-		entries, _ := os.ReadDir(dir)
-		for _, entry := range entries {
-			if entry.IsDir() {
-				entryName := entry.Name()
-				if strings.HasPrefix(entryName, language+"-") {
-					testPath := filepath.Join(dir, entryName, strings.TrimSuffix(fileTitle, ".admx")+".adml")
-					if _, err := os.Stat(testPath); err == nil {
-						admlPath = testPath
-						break
-					}
-				}
-			}
+	admlPath, err := resolveAdmlPath(filepath.Dir(admxPath), filepath.Base(admxPath), languageCodes)
+	if err != nil {
+		return &AdmxLoadFailure{
+			FailType: NoAdml,
+			AdmxPath: admxPath,
+			Info:     err.Error(),
 		}
-	}
-
-	// If still not found, try en-US
-	if _, err := os.Stat(admlPath); os.IsNotExist(err) {
-		admlPath = filepath.Join(dir, "en-US", strings.TrimSuffix(fileTitle, ".admx")+".adml")
 	}
 
 	// Check ADML
@@ -198,6 +185,82 @@ func (b *AdmxBundle) addSingleAdmx(admxPath string, languageCode string) *AdmxLo
 	b.namespaces[admx.AdmxNamespace] = admx
 
 	return nil
+}
+
+func resolveAdmlPath(dir string, admxFileName string, languageCodes []string) (string, error) {
+	base := strings.TrimSuffix(admxFileName, ".admx") + ".adml"
+
+	// Some OEM images keep ADMLs next to ADMX files.
+	directPath := filepath.Join(dir, base)
+	if _, err := os.Stat(directPath); err == nil {
+		return directPath, nil
+	}
+
+	candidateDirs := []string{dir}
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				candidateDirs = append(candidateDirs, filepath.Join(dir, entry.Name()))
+			}
+		}
+	}
+
+	tried := map[string]struct{}{}
+	candidates := expandLocaleCandidates(languageCodes)
+
+	for _, candidateDir := range candidateDirs {
+		localPath := filepath.Join(candidateDir, base)
+		if _, err := os.Stat(localPath); err == nil {
+			return localPath, nil
+		}
+
+		for _, locale := range candidates {
+			localePath := filepath.Join(candidateDir, locale, base)
+			key := strings.ToLower(localePath)
+			if _, ok := tried[key]; ok {
+				continue
+			}
+			tried[key] = struct{}{}
+			if _, err := os.Stat(localePath); err == nil {
+				return localePath, nil
+			}
+		}
+	}
+
+	// final fallback to en-US regardless of duplicates
+	fallback := filepath.Join(dir, "en-US", base)
+	if _, err := os.Stat(fallback); err == nil {
+		return fallback, nil
+	}
+
+	return "", fmt.Errorf("adml not found for %s", admxFileName)
+}
+
+func expandLocaleCandidates(languageCodes []string) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	add := func(loc string) {
+		loc = strings.TrimSpace(loc)
+		if loc == "" {
+			return
+		}
+		key := strings.ToLower(loc)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		result = append(result, loc)
+	}
+
+	for _, loc := range languageCodes {
+		add(loc)
+		if idx := strings.Index(loc, "-"); idx > 0 {
+			add(loc[:idx])
+		}
+	}
+	add("en-US")
+	return result
 }
 
 func (b *AdmxBundle) buildStructures() {

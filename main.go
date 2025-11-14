@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"gopolicy/internal/handlers"
@@ -33,9 +34,9 @@ func main() {
 
 	fmt.Printf("Loading ADMX files: %s\n", admxPath)
 	if _, err := os.Stat(admxPath); err == nil {
-		languageCode := "tr-TR" //getSystemLanguage()
-		fmt.Printf("Using language: %s\n", languageCode)
-		failures, err := workspace.LoadFolder(admxPath, languageCode)
+		locales := detectLocales()
+		fmt.Printf("Detected locales: %v\n", locales)
+		failures, err := workspace.LoadFolder(admxPath, locales...)
 		if err != nil {
 			log.Printf("ADMX loading error: %v\n", err)
 		}
@@ -52,7 +53,10 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	// API endpoints
-	handler := handlers.NewPolicyHandler(workspace)
+	handler, err := handlers.NewPolicyHandler(workspace)
+	if err != nil {
+		log.Fatalf("Failed to create handler: %v", err)
+	}
 	mux.HandleFunc("/", handler.HandleIndex)
 	mux.HandleFunc("/api/categories", handler.HandleCategories)
 	mux.HandleFunc("/api/policies", handler.HandlePolicies)
@@ -70,42 +74,42 @@ func main() {
 	}
 }
 
-// getSystemLanguage gets system language from environment variables
-func getSystemLanguage() string {
-	// Try LANG environment variable first
-	if lang := os.Getenv("LANG"); lang != "" {
-		// Convert from format like "en_US.UTF-8" to "en-US"
-		lang = strings.ReplaceAll(lang, "_", "-")
-		if idx := strings.Index(lang, "."); idx != -1 {
-			lang = lang[:idx]
-		}
-		if lang != "" {
-			return lang
+func detectLocales() []string {
+	localeSet := map[string]struct{}{}
+	addLocale := func(loc string) {
+		norm := normalizeLocale(loc)
+		if norm != "" {
+			localeSet[norm] = struct{}{}
 		}
 	}
 
-	// Try LC_ALL
-	if lang := os.Getenv("LC_ALL"); lang != "" {
-		lang = strings.ReplaceAll(lang, "_", "-")
-		if idx := strings.Index(lang, "."); idx != -1 {
-			lang = lang[:idx]
-		}
-		if lang != "" {
-			return lang
-		}
-	}
+	addLocale(os.Getenv("LANG"))
+	addLocale(os.Getenv("PreferredLanguage"))
+	addLocale(os.Getenv("UILanguage"))
 
-	// Try LC_MESSAGES
-	if lang := os.Getenv("LC_MESSAGES"); lang != "" {
-		lang = strings.ReplaceAll(lang, "_", "-")
-		if idx := strings.Index(lang, "."); idx != -1 {
-			lang = lang[:idx]
-		}
-		if lang != "" {
-			return lang
-		}
-	}
+	// backup locales (Turkish and English)
+	addLocale("tr-TR")
+	addLocale("en-US")
 
-	// Default fallback to English
-	return "en-US"
+	var locales []string
+	for loc := range localeSet {
+		locales = append(locales, loc)
+	}
+	sort.Strings(locales)
+	return locales
+}
+
+func normalizeLocale(loc string) string {
+	loc = strings.TrimSpace(loc)
+	if len(loc) < 4 {
+		return ""
+	}
+	loc = strings.ReplaceAll(loc, "_", "-")
+	parts := strings.Split(loc, "-")
+	if len(parts) < 2 {
+		return ""
+	}
+	lang := strings.ToLower(parts[0])
+	region := strings.ToUpper(parts[1])
+	return lang + "-" + region
 }

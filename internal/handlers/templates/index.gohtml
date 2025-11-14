@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Policy - Go Edition</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="notification-container"></div>
+
+    <div class="container">
+        <header>
+            <h1>🛡️ Go Policy</h1>
+            <p>Windows Group Policy Editor - Web Interface</p>
+        </header>
+
+        <div class="main-layout">
+            <aside class="sidebar">
+                <h2>Categories</h2>
+                <div id="categories-tree"></div>
+            </aside>
+
+            <main class="content">
+                <div class="toolbar">
+                    <select id="section-filter">
+                        <option value="both">Both</option>
+                        <option value="user">User</option>
+                        <option value="computer">Computer</option>
+                    </select>
+                    <button onclick="savePolicies()">💾 Save</button>
+                    <button onclick="loadSources()">🔄 Refresh</button>
+                </div>
+
+                <div class="info-panel">
+                    <div id="policy-info">
+                        <h3>Info Panel</h3>
+                        <p>Select a category or policy.</p>
+                    </div>
+                </div>
+
+                <div class="policies-list">
+                    <h3>Policies</h3>
+                    <div id="policies"></div>
+                </div>
+            </main>
+        </div>
+
+        <footer>
+            <p>Go Policy - Go Edition | Works on all Windows versions</p>
+        </footer>
+    </div>
+
+    <div id="policy-edit-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title"></h2>
+            <div id="modal-body"></div>
+            <div class="modal-actions">
+                <button id="apply-policy-button" onclick="applyPolicy()">Apply</button>
+                <button onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
+

@@ -174,6 +174,9 @@ async function openPolicyEditor(policyId) {
         const response = await fetch(`/api/policy/${encodeURIComponent(policyId)}`);
         const policy = await response.json();
         currentPolicy = policy;
+        resetApplyButton();
+        
+        console.log('Policy loaded:', policy); // Debug: API'dan gelen veriyi kontrol et
         
         const modal = document.getElementById('policy-edit-modal');
         const title = document.getElementById('modal-title');
@@ -181,23 +184,34 @@ async function openPolicyEditor(policyId) {
         
         title.textContent = policy.name;
         
+        // Determine state badge color and text
+        const currentState = policy.state || 'Not Configured';
+        let stateBadgeClass = 'not-configured';
+        if (currentState === 'Enabled') stateBadgeClass = 'enabled';
+        else if (currentState === 'Disabled') stateBadgeClass = 'disabled';
+        
         // Create modal content
         let html = `
             <p style="margin-bottom: 20px; color: #666;">${policy.description}</p>
             
             <div class="form-group">
-                <label>Policy State:</label>
+                <label>
+                    Policy State: 
+                    <span class="policy-state ${stateBadgeClass}" style="margin-left: 10px;">
+                        Şu an: ${currentState}
+                    </span>
+                </label>
                 <div class="radio-group">
                     <label>
-                        <input type="radio" name="policy-state" value="NotConfigured" ${policy.state === 'Not Configured' ? 'checked' : ''}>
+                        <input type="radio" name="policy-state" value="NotConfigured" ${currentState === 'Not Configured' ? 'checked' : ''}>
                         Not Configured
                     </label>
                     <label>
-                        <input type="radio" name="policy-state" value="Enabled" ${policy.state === 'Enabled' ? 'checked' : ''}>
+                        <input type="radio" name="policy-state" value="Enabled" ${currentState === 'Enabled' ? 'checked' : ''}>
                         Enabled
                     </label>
                     <label>
-                        <input type="radio" name="policy-state" value="Disabled" ${policy.state === 'Disabled' ? 'checked' : ''}>
+                        <input type="radio" name="policy-state" value="Disabled" ${currentState === 'Disabled' ? 'checked' : ''}>
                         Disabled
                     </label>
                 </div>
@@ -266,13 +280,17 @@ function renderPolicyElement(elem) {
     switch (elem.type) {
         case 'text':
             let textAttrs = '';
+            let hasValue = elem.defaultValue !== undefined && elem.defaultValue !== null && elem.defaultValue !== '';
             if (elem.maxLength) {
                 textAttrs += ` maxlength="${elem.maxLength}"`;
             }
-            if (elem.defaultValue !== undefined && elem.defaultValue !== null) {
+            if (hasValue) {
                 textAttrs += ` value="${escapeHtml(String(elem.defaultValue))}"`;
             }
             html += `<input type="text" class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="text" placeholder="${escapeHtml(elem.label || '')}"${textAttrs}>`;
+            if (hasValue) {
+                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı değer yüklendi</small>`;
+            }
             if (elem.maxLength) {
                 html += `<small style="display: block; color: #666; margin-top: 3px;">Maksimum uzunluk: ${elem.maxLength} karakter</small>`;
             }
@@ -280,29 +298,37 @@ function renderPolicyElement(elem) {
         
         case 'decimal':
             let numAttrs = '';
+            let hasNumValue = elem.defaultValue !== undefined && elem.defaultValue !== null;
             if (elem.minValue !== undefined) {
                 numAttrs += ` min="${elem.minValue}"`;
             }
             if (elem.maxValue !== undefined) {
                 numAttrs += ` max="${elem.maxValue}"`;
             }
-            if (elem.defaultValue !== undefined && elem.defaultValue !== null) {
+            if (hasNumValue) {
                 numAttrs += ` value="${elem.defaultValue}"`;
             }
             if (elem.required) {
                 numAttrs += ` required`;
             }
             html += `<input type="number" class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="decimal" placeholder="${escapeHtml(elem.label || '')}"${numAttrs}>`;
+            if (hasNumValue) {
+                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı değer: ${elem.defaultValue}</small>`;
+            }
             if (elem.minValue !== undefined || elem.maxValue !== undefined) {
                 html += `<small style="display: block; color: #666; margin-top: 3px;">Değer aralığı: ${elem.minValue || 0} - ${elem.maxValue || 'sınırsız'}</small>`;
             }
             break;
         
         case 'boolean':
+            const boolChecked = elem.defaultValue === true;
             html += `<div style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="boolean" ${elem.defaultValue ? 'checked' : ''}>
+                <input type="checkbox" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="boolean" ${boolChecked ? 'checked' : ''}>
                 <label for="elem-${elem.id}" style="cursor: pointer; margin: 0;">Etkinleştir</label>
             </div>`;
+            if (elem.defaultValue !== undefined && elem.defaultValue !== null) {
+                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı değer: ${boolChecked ? 'Açık' : 'Kapalı'}</small>`;
+            }
             break;
         
         case 'enum':
@@ -310,15 +336,20 @@ function renderPolicyElement(elem) {
             if (!elem.required) {
                 html += `<option value="">-- Seçin --</option>`;
             }
+            let selectedOptionName = null;
             if (elem.options && elem.options.length > 0) {
                 elem.options.forEach(opt => {
                     const selected = (elem.defaultValue !== undefined && elem.defaultValue === opt.index) ? ' selected' : '';
+                    if (selected) selectedOptionName = opt.displayName;
                     html += `<option value="${opt.index}"${selected}>${escapeHtml(opt.displayName)}</option>`;
                 });
             } else {
                 html += `<option value="">Seçenek bulunamadı</option>`;
             }
             html += '</select>';
+            if (selectedOptionName) {
+                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı seçim: ${escapeHtml(selectedOptionName)}</small>`;
+            }
             break;
         
         case 'list':
@@ -327,15 +358,23 @@ function renderPolicyElement(elem) {
         
         case 'multiText':
             let multiTextValue = '';
+            let hasMultiText = false;
             if (elem.defaultValue !== undefined && elem.defaultValue !== null) {
                 if (Array.isArray(elem.defaultValue)) {
                     multiTextValue = elem.defaultValue.join('\n');
+                    hasMultiText = elem.defaultValue.length > 0;
                 } else {
                     multiTextValue = String(elem.defaultValue);
+                    hasMultiText = multiTextValue.length > 0;
                 }
             }
             html += `<textarea class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="multitext" rows="4" placeholder="Her satıra bir değer girin">${escapeHtml(multiTextValue)}</textarea>`;
-            html += `<small style="display: block; color: #666; margin-top: 3px;">Her satıra bir değer girin</small>`;
+            if (hasMultiText) {
+                const lineCount = Array.isArray(elem.defaultValue) ? elem.defaultValue.length : multiTextValue.split('\n').filter(l => l.trim()).length;
+                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ ${lineCount} satır kayıtlı değer yüklendi</small>`;
+            } else {
+                html += `<small style="display: block; color: #666; margin-top: 3px;">Her satıra bir değer girin</small>`;
+            }
             break;
         
         default:
@@ -463,6 +502,7 @@ function escapeHtml(text) {
 // Apply policy
 async function applyPolicy() {
     if (!currentPolicy) return;
+    setApplyButtonLoading(true);
     
     const state = document.querySelector('input[name="policy-state"]:checked').value;
     
@@ -615,6 +655,8 @@ async function applyPolicy() {
     } catch (error) {
         console.error('Failed to apply policy:', error);
         showError('Failed to apply policy: ' + error.message);
+    } finally {
+        setApplyButtonLoading(false);
     }
 }
 
@@ -622,6 +664,7 @@ async function applyPolicy() {
 function closeModal() {
     document.getElementById('policy-edit-modal').style.display = 'none';
     currentPolicy = null;
+    resetApplyButton();
 }
 
 // Load sources
@@ -654,13 +697,59 @@ async function savePolicies() {
     }
 }
 
+function setApplyButtonLoading(isLoading) {
+    const button = document.getElementById('apply-policy-button');
+    if (!button) return;
+    if (isLoading) {
+        button.disabled = true;
+        button.dataset.originalText = button.dataset.originalText || button.textContent;
+        button.textContent = 'Applying...';
+        button.classList.add('loading');
+    } else {
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || 'Apply';
+        button.classList.remove('loading');
+    }
+}
+
+function resetApplyButton() {
+    const button = document.getElementById('apply-policy-button');
+    if (button) {
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || 'Apply';
+        button.classList.remove('loading');
+    }
+}
+
 // Notifications
 function showSuccess(message) {
-    alert('✅ ' + message);
+    showNotification(message, 'success');
 }
 
 function showError(message) {
-    alert('❌ ' + message);
+    showNotification(message, 'error');
+}
+
+function showNotification(message, type) {
+    const container = document.getElementById('notification-container');
+    if (!container) {
+        alert(message);
+        return;
+    }
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `${type === 'error' ? '❌' : '✅'} <span>${message}</span>`;
+
+    container.appendChild(notification);
+
+    setTimeout(() => {
+        notification.classList.add('hide');
+    }, 3500);
+
+    setTimeout(() => {
+        notification.remove();
+    }, 4000);
 }
 
 // Close modal when clicking outside
