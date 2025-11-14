@@ -206,6 +206,12 @@ func (h *PolicyHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get section filter (both, user, or computer)
+	sectionFilter := strings.ToLower(r.URL.Query().Get("section"))
+	if sectionFilter == "" {
+		sectionFilter = "both"
+	}
+
 	// Normalize query for case-insensitive search
 	queryLower := strings.ToLower(query)
 
@@ -248,13 +254,27 @@ func (h *PolicyHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 			CategoryName: categoryName,
 		}
 
-		// Add to appropriate section
+		// Add to appropriate section based on filter
 		section := pol.RawPolicy.Section
-		if section == policy.User || section == policy.Both {
-			userResults = append(userResults, item)
-		}
-		if section == policy.Machine || section == policy.Both {
-			computerResults = append(computerResults, item)
+
+		// If filter is "user", only add user policies
+		if sectionFilter == "user" {
+			if section == policy.User || section == policy.Both {
+				userResults = append(userResults, item)
+			}
+		} else if sectionFilter == "computer" {
+			// If filter is "computer", only add computer policies
+			if section == policy.Machine || section == policy.Both {
+				computerResults = append(computerResults, item)
+			}
+		} else {
+			// If filter is "both", add to both sections
+			if section == policy.User || section == policy.Both {
+				userResults = append(userResults, item)
+			}
+			if section == policy.Machine || section == policy.Both {
+				computerResults = append(computerResults, item)
+			}
 		}
 	}
 

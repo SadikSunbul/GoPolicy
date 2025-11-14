@@ -23,30 +23,30 @@
                 <div class="search-container">
                     <h3 style="margin: 10px 0; color: #667eea; font-size: 14px;">🔍 Politika Ara</h3>
                     
-                    <!-- User Search -->
+                    <!-- Single Search Box with Filter -->
                     <div class="search-box">
-                        <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">
-                            👤 Kullanıcı Politikaları
-                        </label>
                         <input 
                             type="text" 
-                            id="user-search-input" 
-                            placeholder="Kullanıcı politikaları ara..." 
-                            onkeyup="handleSearchKeyPress(event, 'user')"
-                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
-                    </div>
-                    
-                    <!-- Computer Search -->
-                    <div class="search-box" style="margin-top: 15px;">
-                        <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">
-                            🖥️ Bilgisayar Politikaları
-                        </label>
-                        <input 
-                            type="text" 
-                            id="computer-search-input" 
-                            placeholder="Bilgisayar politikaları ara..." 
-                            onkeyup="handleSearchKeyPress(event, 'computer')"
-                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            id="search-input" 
+                            placeholder="Politika ara..." 
+                            onkeyup="handleSearchKeyPress(event)"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; margin-bottom: 10px;">
+                        
+                        <!-- Section Filter -->
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 8px;">
+                            <label style="font-size: 12px; color: #666; display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="search-section" value="both" checked style="margin-right: 5px;">
+                                Her İkisi
+                            </label>
+                            <label style="font-size: 12px; color: #666; display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="search-section" value="user" style="margin-right: 5px;">
+                                👤 Kullanıcı
+                            </label>
+                            <label style="font-size: 12px; color: #666; display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="search-section" value="computer" style="margin-right: 5px;">
+                                🖥️ Bilgisayar
+                            </label>
+                        </div>
                     </div>
                 </div>
                 

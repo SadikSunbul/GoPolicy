@@ -838,7 +838,7 @@ window.onclick = function(event) {
 // ======== SEARCH FUNCTIONALITY ========
 
 // Handle search key press with debouncing
-function handleSearchKeyPress(event, section) {
+function handleSearchKeyPress(event) {
     const query = event.target.value.trim();
     
     // Clear previous timer
@@ -852,6 +852,10 @@ function handleSearchKeyPress(event, section) {
         return;
     }
     
+    // Get selected section
+    const sectionRadio = document.querySelector('input[name="search-section"]:checked');
+    const section = sectionRadio ? sectionRadio.value : 'both';
+    
     // Debounce: wait 500ms after user stops typing
     searchDebounceTimer = setTimeout(() => {
         performSearch(query, section);
@@ -863,7 +867,7 @@ async function performSearch(query, section) {
     if (!query) return;
     
     try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&section=${encodeURIComponent(section)}`);
         if (!response.ok) {
             throw new Error('Search failed');
         }
@@ -895,12 +899,18 @@ function displaySearchResults(data, section) {
     } else if (section === 'computer') {
         results = data.computer || [];
         sectionName = 'Bilgisayar';
+    } else if (section === 'both') {
+        // Combine both user and computer results
+        const userResults = data.user || [];
+        const computerResults = data.computer || [];
+        results = [...userResults, ...computerResults];
+        sectionName = 'Tüm';
     }
     
     // Update info panel
     infoPanel.innerHTML = `
         <h3>🔍 Arama Sonuçları</h3>
-        <p><strong>${results.length}</strong> ${sectionName.toLowerCase()} politikası bulundu.</p>
+        <p><strong>${results.length}</strong> ${sectionName.toLowerCase()} politika bulundu.</p>
         <p style="color: #666; font-size: 14px;">Arama: "${escapeHtml(data.query)}"</p>
     `;
     
@@ -909,7 +919,7 @@ function displaySearchResults(data, section) {
     
     if (results.length === 0) {
         policiesList.innerHTML = `<p style="padding: 20px; text-align: center; color: #666;">
-            Bu bölümde sonuç bulunamadı.
+            Sonuç bulunamadı.
         </p>`;
         return;
     }
@@ -944,12 +954,9 @@ function displaySearchResults(data, section) {
 function clearSearchResults() {
     currentSearchResults = null;
     
-    // Clear search inputs
-    const userInput = document.getElementById('user-search-input');
-    const computerInput = document.getElementById('computer-search-input');
-    
-    if (userInput) userInput.value = '';
-    if (computerInput) computerInput.value = '';
+    // Clear search input
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.value = '';
     
     // Clear policies list
     const policiesList = document.getElementById('policies');
