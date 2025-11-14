@@ -5,6 +5,8 @@ package policy
 import (
 	"fmt"
 
+	"gopolicy/internal/polfile"
+
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -54,38 +56,38 @@ func updatePolFile(section AdmxPolicySection, policy *AdmxPolicy, state PolicySt
 		return err
 	}
 
-	pol, err := LoadPolFile(polPath)
+	pol, err := polfile.Load(polPath)
 	if err != nil {
 		// If POL file is corrupted or can't be loaded, create a new empty one
-		pol = &PolFile{path: polPath, Entries: []PolEntry{}}
+		pol = polfile.NewPolFile()
 	}
 
 	switch state {
 	case PolicyStateEnabled:
-		return updatePolEnabled(pol, policy, options)
+		return updatePolEnabled(pol, polPath, policy, options)
 	case PolicyStateDisabled:
-		return updatePolDisabled(pol, policy)
+		return updatePolDisabled(pol, polPath, policy)
 	case PolicyStateNotConfigured:
-		return updatePolNotConfigured(pol, policy)
+		return updatePolNotConfigured(pol, polPath, policy)
 	}
 
 	return nil
 }
 
-func updatePolEnabled(pol *PolFile, policy *AdmxPolicy, options map[string]interface{}) error {
+func updatePolEnabled(pol *polfile.PolFile, polPath string, policy *AdmxPolicy, options map[string]interface{}) error {
 	if policy.AffectedValues == nil {
 		if policy.RegistryValue != "" {
-			if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(1), RegDWord); err != nil {
+			if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(1), polfile.DWORD); err != nil {
 				return err
 			}
 		}
 	} else {
 		if policy.AffectedValues.OnValue == nil && policy.RegistryValue != "" {
-			if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(1), RegDWord); err != nil {
+			if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(1), polfile.DWORD); err != nil {
 				return err
 			}
 		}
-		if err := applyPolRegistryList(pol, policy.AffectedValues, policy.RegistryKey, policy.RegistryValue, true); err != nil {
+		if err := applyPolFileRegistryList(pol, policy.AffectedValues, policy.RegistryKey, policy.RegistryValue, true); err != nil {
 			return err
 		}
 	}
@@ -106,7 +108,7 @@ func updatePolEnabled(pol *PolFile, policy *AdmxPolicy, options map[string]inter
 			switch e := element.(type) {
 			case *DecimalPolicyElement:
 				if e.StoreAsText {
-					pol.SetValue(elemKey, base.RegistryValue, fmt.Sprintf("%v", optionData), RegString)
+					pol.SetValue(elemKey, base.RegistryValue, fmt.Sprintf("%v", optionData), polfile.SZ)
 				} else {
 					var dword uint32
 					switch v := optionData.(type) {
@@ -117,33 +119,33 @@ func updatePolEnabled(pol *PolFile, policy *AdmxPolicy, options map[string]inter
 					case float64:
 						dword = uint32(v)
 					}
-					pol.SetValue(elemKey, base.RegistryValue, dword, RegDWord)
+					pol.SetValue(elemKey, base.RegistryValue, dword, polfile.DWORD)
 				}
 			case *BooleanPolicyElement:
 				checkState, _ := optionData.(bool)
 				if e.AffectedRegistry != nil && e.AffectedRegistry.OnValue == nil && checkState {
-					pol.SetValue(elemKey, base.RegistryValue, uint32(1), RegDWord)
+					pol.SetValue(elemKey, base.RegistryValue, uint32(1), polfile.DWORD)
 				}
 				if e.AffectedRegistry != nil && e.AffectedRegistry.OffValue == nil && !checkState {
 					pol.DeleteValue(elemKey, base.RegistryValue)
 				}
 				if e.AffectedRegistry != nil {
-					applyPolRegistryList(pol, e.AffectedRegistry, elemKey, base.RegistryValue, checkState)
+					applyPolFileRegistryList(pol, e.AffectedRegistry, elemKey, base.RegistryValue, checkState)
 				}
 			case *TextPolicyElement:
 				str, _ := optionData.(string)
-				regType := RegString
+				regType := polfile.SZ
 				if e.RegExpandSz {
-					regType = RegExpandString
+					regType = polfile.EXPAND_SZ
 				}
 				pol.SetValue(elemKey, base.RegistryValue, str, regType)
 			case *ListPolicyElement:
 				if !e.NoPurgeOthers {
 					pol.ClearKey(elemKey)
 				}
-				regType := RegString
+				regType := polfile.SZ
 				if e.RegExpandSz {
-					regType = RegExpandString
+					regType = polfile.EXPAND_SZ
 				}
 				if e.UserProvidesNames {
 					if dict, ok := optionData.(map[string]string); ok {
@@ -166,30 +168,30 @@ func updatePolEnabled(pol *PolFile, policy *AdmxPolicy, options map[string]inter
 				if idx, ok := optionData.(int); ok && idx >= 0 && idx < len(e.Items) {
 					item := e.Items[idx]
 					if item.Value != nil {
-						writePolValue(pol, item.Value, elemKey, base.RegistryValue)
+						writePolFileValue(pol, item.Value, elemKey, base.RegistryValue)
 					}
 					if item.ValueList != nil {
-						applyPolValueList(pol, item.ValueList, elemKey)
+						applyPolFileValueList(pol, item.ValueList, elemKey)
 					}
 				}
 			case *MultiTextPolicyElement:
 				if strs, ok := optionData.([]string); ok {
-					pol.SetValue(elemKey, base.RegistryValue, strs, RegMultiString)
+					pol.SetValue(elemKey, base.RegistryValue, strs, polfile.MULTI_SZ)
 				}
 			}
 		}
 	}
 
-	return pol.Save()
+	return pol.Save(polPath)
 }
 
-func updatePolDisabled(pol *PolFile, policy *AdmxPolicy) error {
+func updatePolDisabled(pol *polfile.PolFile, polPath string, policy *AdmxPolicy) error {
 	if policy.AffectedValues != nil {
-		if err := applyPolRegistryList(pol, policy.AffectedValues, policy.RegistryKey, policy.RegistryValue, false); err != nil {
+		if err := applyPolFileRegistryList(pol, policy.AffectedValues, policy.RegistryKey, policy.RegistryValue, false); err != nil {
 			return err
 		}
 	} else if policy.RegistryValue != "" {
-		if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(0), RegDWord); err != nil {
+		if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(0), polfile.DWORD); err != nil {
 			return err
 		}
 	}
@@ -205,10 +207,10 @@ func updatePolDisabled(pol *PolFile, policy *AdmxPolicy) error {
 		}
 	}
 
-	return pol.Save()
+	return pol.Save(polPath)
 }
 
-func updatePolNotConfigured(pol *PolFile, policy *AdmxPolicy) error {
+func updatePolNotConfigured(pol *polfile.PolFile, polPath string, policy *AdmxPolicy) error {
 	if policy.RegistryValue != "" {
 		pol.DeleteValue(policy.RegistryKey, policy.RegistryValue)
 	}
@@ -224,10 +226,10 @@ func updatePolNotConfigured(pol *PolFile, policy *AdmxPolicy) error {
 		}
 	}
 
-	return pol.Save()
+	return pol.Save(polPath)
 }
 
-func applyPolRegistryList(pol *PolFile, regList *PolicyRegistryList, defaultKey, defaultValue string, isOn bool) error {
+func applyPolFileRegistryList(pol *polfile.PolFile, regList *PolicyRegistryList, defaultKey, defaultValue string, isOn bool) error {
 	var value *PolicyRegistryValue
 	var valueList *PolicyRegistrySingleList
 
@@ -240,27 +242,27 @@ func applyPolRegistryList(pol *PolFile, regList *PolicyRegistryList, defaultKey,
 	}
 
 	if value != nil {
-		return writePolValue(pol, value, defaultKey, defaultValue)
+		return writePolFileValue(pol, value, defaultKey, defaultValue)
 	}
 	if valueList != nil {
-		return applyPolValueList(pol, valueList, defaultKey)
+		return applyPolFileValueList(pol, valueList, defaultKey)
 	}
 	return nil
 }
 
-func writePolValue(pol *PolFile, value *PolicyRegistryValue, key, valueName string) error {
+func writePolFileValue(pol *polfile.PolFile, value *PolicyRegistryValue, key, valueName string) error {
 	switch value.RegistryType {
 	case Delete:
 		pol.DeleteValue(key, valueName)
 	case Numeric:
-		pol.SetValue(key, valueName, uint32(value.NumberValue), RegDWord)
+		pol.SetValue(key, valueName, uint32(value.NumberValue), polfile.DWORD)
 	default:
-		pol.SetValue(key, valueName, value.StringValue, RegString)
+		pol.SetValue(key, valueName, value.StringValue, polfile.SZ)
 	}
 	return nil
 }
 
-func applyPolValueList(pol *PolFile, list *PolicyRegistrySingleList, defaultKey string) error {
+func applyPolFileValueList(pol *polfile.PolFile, list *PolicyRegistrySingleList, defaultKey string) error {
 	listKey := defaultKey
 	if list.DefaultRegistryKey != "" {
 		listKey = list.DefaultRegistryKey
@@ -271,7 +273,7 @@ func applyPolValueList(pol *PolFile, list *PolicyRegistrySingleList, defaultKey 
 		if entry.RegistryKey != "" {
 			entryKey = entry.RegistryKey
 		}
-		writePolValue(pol, entry.Value, entryKey, entry.RegistryValue)
+		writePolFileValue(pol, entry.Value, entryKey, entry.RegistryValue)
 	}
 	return nil
 }

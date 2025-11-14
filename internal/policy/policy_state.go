@@ -1,5 +1,11 @@
 package policy
 
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
 // PolicyState represents policy states.
 type PolicyState int
 
@@ -21,5 +27,24 @@ func (ps PolicyState) String() string {
 		return "Enabled"
 	default:
 		return "Unknown"
+	}
+}
+
+// GetPolPath returns the path to the pol file for a given section
+func GetPolPath(section AdmxPolicySection) (string, error) {
+	systemRoot := os.Getenv("SystemRoot")
+	if systemRoot == "" {
+		systemRoot = "C:\\Windows"
+	}
+
+	basePath := filepath.Join(systemRoot, "System32", "GroupPolicy")
+
+	switch section {
+	case User:
+		return filepath.Join(basePath, "User", "Registry.pol"), nil
+	case Machine:
+		return filepath.Join(basePath, "Machine", "Registry.pol"), nil
+	default:
+		return "", fmt.Errorf("invalid section: %d", section)
 	}
 }
