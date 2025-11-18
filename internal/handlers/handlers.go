@@ -14,13 +14,13 @@ type SourceFactory func(policy.AdmxPolicySection) (policy.PolicySource, error)
 type PolicyHandler struct {
 	workspace     *policy.AdmxBundle
 	renderer      pageRenderer
-	source        policy.PolicySource
+	sources       map[policy.AdmxPolicySection]policy.PolicySource
 	sourceFactory SourceFactory
 	detailBuilder *PolicyDetailBuilder
 }
 
 func NewPolicyHandler(workspace *policy.AdmxBundle) (*PolicyHandler, error) {
-	source, err := policy.NewRegistrySource(policy.Machine)
+	machineSource, err := policy.NewRegistrySource(policy.Machine)
 	if err != nil {
 		return nil, fmt.Errorf("kayıt kaynağı oluşturulamadı: %w", err)
 	}
@@ -28,7 +28,9 @@ func NewPolicyHandler(workspace *policy.AdmxBundle) (*PolicyHandler, error) {
 	return &PolicyHandler{
 		workspace: workspace,
 		renderer:  newDefaultRenderer(),
-		source:    source,
+		sources: map[policy.AdmxPolicySection]policy.PolicySource{
+			policy.Machine: machineSource,
+		},
 		sourceFactory: func(section policy.AdmxPolicySection) (policy.PolicySource, error) {
 			return policy.NewRegistrySource(section)
 		},
@@ -81,7 +83,7 @@ func (h *PolicyHandler) HandlePolicies(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]PolicyListItem, 0, len(cat.Policies))
 	for _, pol := range cat.Policies {
-		state, _, err := policy.GetPolicyState(h.source, pol.RawPolicy)
+		state, _, err := h.readPolicyState(pol)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "Policy state okunamadı")
 			return
@@ -107,7 +109,7 @@ func (h *PolicyHandler) HandlePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, options, err := policy.GetPolicyState(h.source, pol.RawPolicy)
+	state, options, err := h.readPolicyState(pol)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Policy state okunamadı")
 		return
@@ -229,7 +231,7 @@ func (h *PolicyHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Get policy state
-		state, _, err := policy.GetPolicyState(h.source, pol.RawPolicy)
+		state, _, err := h.readPolicyState(pol)
 		if err != nil {
 			// Skip policies with errors
 			continue
@@ -359,6 +361,60 @@ func sortCategoryNodes(nodes []*CategoryNode) {
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].Name < nodes[j].Name
 	})
+}
+
+func (h *PolicyHandler) readPolicyState(pol *policy.PolicyPlusPolicy) (policy.PolicyState, map[string]interface{}, error) {
+	sections := h.sectionsToCheck(pol.RawPolicy.Section)
+
+	for idx, section := range sections {
+		source, err := h.getOrCreateSource(section)
+		if err != nil {
+			return policy.PolicyStateNotConfigured, nil, err
+		}
+
+		state, options, err := policy.GetPolicyState(source, pol.RawPolicy)
+		if err != nil {
+			return policy.PolicyStateNotConfigured, nil, err
+		}
+
+		if state != policy.PolicyStateNotConfigured {
+			return state, options, nil
+		}
+		if idx == len(sections)-1 {
+			return state, options, nil
+		}
+	}
+
+	return policy.PolicyStateNotConfigured, nil, nil
+}
+
+func (h *PolicyHandler) getOrCreateSource(section policy.AdmxPolicySection) (policy.PolicySource, error) {
+	if h.sources == nil {
+		h.sources = make(map[policy.AdmxPolicySection]policy.PolicySource)
+	}
+
+	if source, ok := h.sources[section]; ok {
+		return source, nil
+	}
+
+	source, err := h.sourceFactory(section)
+	if err != nil {
+		return nil, err
+	}
+
+	h.sources[section] = source
+	return source, nil
+}
+
+func (h *PolicyHandler) sectionsToCheck(section policy.AdmxPolicySection) []policy.AdmxPolicySection {
+	switch section {
+	case policy.User:
+		return []policy.AdmxPolicySection{policy.User}
+	case policy.Machine:
+		return []policy.AdmxPolicySection{policy.Machine}
+	default:
+		return []policy.AdmxPolicySection{policy.Machine, policy.User}
+	}
 }
 
 type setPolicyRequest struct {

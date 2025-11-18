@@ -1,6 +1,4 @@
-//go:build windows
-
-package polfile
+package policy
 
 import (
 	"bytes"

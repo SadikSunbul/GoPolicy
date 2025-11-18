@@ -1,10 +1,6 @@
-//go:build windows
-
 package policy
 
 import (
-	"gopolicy/internal/polfile"
-
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -19,7 +15,7 @@ func GetPolicyState(source PolicySource, policy *AdmxPolicy) (PolicyState, map[s
 		}
 
 		if polPath, err := GetPolPath(section); err == nil {
-			if pol, err := polfile.Load(polPath); err == nil {
+			if pol, err := Load(polPath); err == nil {
 				state, options := getPolicyStateFromPolFile(pol, policy)
 				if state != PolicyStateNotConfigured {
 					return state, options, nil
@@ -53,36 +49,50 @@ func GetPolicyState(source PolicySource, policy *AdmxPolicy) (PolicyState, map[s
 	return PolicyStateNotConfigured, nil, nil
 }
 
-func getPolicyStateFromPolFile(pol *polfile.PolFile, policy *AdmxPolicy) (PolicyState, map[string]interface{}) {
-	if policy.RegistryValue != "" && !pol.ContainsValue(policy.RegistryKey, policy.RegistryValue) {
-		return PolicyStateNotConfigured, nil
+// GetPolicyStateFromPolFilePublic is public wrapper for getPolicyStateFromPolFile
+func GetPolicyStateFromPolFilePublic(pol *PolFile, policy *AdmxPolicy) (PolicyState, map[string]interface{}) {
+	return getPolicyStateFromPolFile(pol, policy)
+}
+
+func getPolicyStateFromPolFile(pol *PolFile, rawPolicy *AdmxPolicy) (PolicyState, map[string]interface{}) {
+	options := readPolicyElementsFromPolFile(pol, rawPolicy)
+
+	if len(options) > 0 {
+		return PolicyStateEnabled, options
 	}
 
-	if policy.AffectedValues != nil {
-		if isPolFileListPresent(pol, policy.AffectedValues, policy.RegistryKey, policy.RegistryValue, true) {
-			options := readPolicyElementsFromPolFile(pol, policy)
+	if rawPolicy.RegistryValue != "" {
+		if !pol.ContainsValue(rawPolicy.RegistryKey, rawPolicy.RegistryValue) {
+			return PolicyStateNotConfigured, nil
+		}
+
+		val, _, err := pol.GetValue(rawPolicy.RegistryKey, rawPolicy.RegistryValue)
+		if err == nil {
+			if dw, ok := val.(uint32); ok {
+				if dw == 1 {
+					return PolicyStateEnabled, options
+				}
+				if dw == 0 {
+					return PolicyStateDisabled, nil
+				}
+			}
 			return PolicyStateEnabled, options
 		}
-		if isPolFileListPresent(pol, policy.AffectedValues, policy.RegistryKey, policy.RegistryValue, false) {
-			return PolicyStateDisabled, nil
+	}
+
+	if rawPolicy.AffectedValues != nil {
+		if isPolFileListPresent(pol, rawPolicy.AffectedValues, rawPolicy.RegistryKey, rawPolicy.RegistryValue, true) {
+			return PolicyStateEnabled, options
 		}
-	} else if policy.RegistryValue != "" {
-		val, _, err := pol.GetValue(policy.RegistryKey, policy.RegistryValue)
-		if err == nil {
-			if dw, ok := val.(uint32); ok && dw == 1 {
-				options := readPolicyElementsFromPolFile(pol, policy)
-				return PolicyStateEnabled, options
-			}
-			if dw, ok := val.(uint32); ok && dw == 0 {
-				return PolicyStateDisabled, nil
-			}
+		if isPolFileListPresent(pol, rawPolicy.AffectedValues, rawPolicy.RegistryKey, rawPolicy.RegistryValue, false) {
+			return PolicyStateDisabled, nil
 		}
 	}
 
 	return PolicyStateNotConfigured, nil
 }
 
-func isPolFileListPresent(pol *polfile.PolFile, regList *PolicyRegistryList, defaultKey, defaultValue string, checkOn bool) bool {
+func isPolFileListPresent(pol *PolFile, regList *PolicyRegistryList, defaultKey, defaultValue string, checkOn bool) bool {
 	var value *PolicyRegistryValue
 	var valueList *PolicyRegistrySingleList
 
@@ -103,7 +113,7 @@ func isPolFileListPresent(pol *polfile.PolFile, regList *PolicyRegistryList, def
 	return false
 }
 
-func isPolFileValuePresent(pol *polfile.PolFile, value *PolicyRegistryValue, key, valueName string) bool {
+func isPolFileValuePresent(pol *PolFile, value *PolicyRegistryValue, key, valueName string) bool {
 	data, _, err := pol.GetValue(key, valueName)
 	if err != nil {
 		return false
@@ -124,7 +134,7 @@ func isPolFileValuePresent(pol *polfile.PolFile, value *PolicyRegistryValue, key
 	return false
 }
 
-func isPolFileListAllPresent(pol *polfile.PolFile, list *PolicyRegistrySingleList, defaultKey string) bool {
+func isPolFileListAllPresent(pol *PolFile, list *PolicyRegistrySingleList, defaultKey string) bool {
 	listKey := defaultKey
 	if list.DefaultRegistryKey != "" {
 		listKey = list.DefaultRegistryKey
@@ -142,17 +152,24 @@ func isPolFileListAllPresent(pol *polfile.PolFile, list *PolicyRegistrySingleLis
 	return true
 }
 
-func readPolicyElementsFromPolFile(pol *polfile.PolFile, policy *AdmxPolicy) map[string]interface{} {
+func readPolicyElementsFromPolFile(pol *PolFile, rawPolicy *AdmxPolicy) map[string]interface{} {
 	options := make(map[string]interface{})
-	if policy.Elements == nil {
+	if rawPolicy.Elements == nil {
 		return options
 	}
 
-	for _, element := range policy.Elements {
+	for _, element := range rawPolicy.Elements {
 		base := element.GetBase()
-		elemKey := policy.RegistryKey
+		elemKey := rawPolicy.RegistryKey
 		if base.RegistryKey != "" {
 			elemKey = base.RegistryKey
+		}
+
+		// skip values starting with **del. or **
+		if base.RegistryValue != "" {
+			if base.RegistryValue[0] == '*' && len(base.RegistryValue) > 1 && base.RegistryValue[1] == '*' {
+				continue
+			}
 		}
 
 		if !pol.ContainsValue(elemKey, base.RegistryValue) {
