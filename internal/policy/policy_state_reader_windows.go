@@ -89,6 +89,29 @@ func getPolicyStateFromPolFile(pol *PolFile, rawPolicy *AdmxPolicy) (PolicyState
 		}
 	}
 
+	// Check for **del. markers in elements (disabled state detection)
+	// This method detects disabled state for policies without RegistryValue
+	if rawPolicy.Elements != nil {
+		hasAnyDeleteMarker := false
+		for _, element := range rawPolicy.Elements {
+			base := element.GetBase()
+			elemKey := rawPolicy.RegistryKey
+			if base.RegistryKey != "" {
+				elemKey = base.RegistryKey
+			}
+
+			// Check if **del. prefixed value exists
+			if pol.ContainsValue(elemKey, "**del."+base.RegistryValue) {
+				hasAnyDeleteMarker = true
+				break
+			}
+		}
+
+		if hasAnyDeleteMarker {
+			return PolicyStateDisabled, nil
+		}
+	}
+
 	return PolicyStateNotConfigured, nil
 }
 

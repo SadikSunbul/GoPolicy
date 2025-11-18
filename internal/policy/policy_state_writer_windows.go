@@ -71,6 +71,19 @@ func updatePolFile(section AdmxPolicySection, policy *AdmxPolicy, state PolicySt
 }
 
 func updatePolEnabled(pol *PolFile, polPath string, policy *AdmxPolicy, options map[string]interface{}) error {
+	// Clear all **del. markers from elements first
+	if policy.Elements != nil {
+		for _, element := range policy.Elements {
+			base := element.GetBase()
+			elemKey := policy.RegistryKey
+			if base.RegistryKey != "" {
+				elemKey = base.RegistryKey
+			}
+			// Clear the **del. marker (if present)
+			pol.ForgetValue(elemKey, base.RegistryValue)
+		}
+	}
+
 	if policy.AffectedValues == nil {
 		if policy.RegistryValue != "" {
 			if err := pol.SetValue(policy.RegistryKey, policy.RegistryValue, uint32(1), DWORD); err != nil {
@@ -217,7 +230,7 @@ func updatePolDisabled(pol *PolFile, polPath string, policy *AdmxPolicy) error {
 
 func updatePolNotConfigured(pol *PolFile, polPath string, policy *AdmxPolicy) error {
 	if policy.RegistryValue != "" {
-		pol.DeleteValue(policy.RegistryKey, policy.RegistryValue)
+		pol.ForgetValue(policy.RegistryKey, policy.RegistryValue)
 	}
 
 	if policy.Elements != nil {
@@ -227,7 +240,7 @@ func updatePolNotConfigured(pol *PolFile, polPath string, policy *AdmxPolicy) er
 			if base.RegistryKey != "" {
 				elemKey = base.RegistryKey
 			}
-			pol.DeleteValue(elemKey, base.RegistryValue)
+			pol.ForgetValue(elemKey, base.RegistryValue)
 		}
 	}
 
