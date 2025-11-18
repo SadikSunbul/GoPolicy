@@ -161,7 +161,16 @@ func updatePolEnabled(pol *PolFile, polPath string, policy *AdmxPolicy, options 
 					}
 				}
 			case *EnumPolicyElement:
-				if idx, ok := optionData.(int); ok && idx >= 0 && idx < len(e.Items) {
+				var idx int
+				switch v := optionData.(type) {
+				case int:
+					idx = v
+				case float64:
+					idx = int(v)
+				case uint32:
+					idx = int(v)
+				}
+				if idx >= 0 && idx < len(e.Items) {
 					item := e.Items[idx]
 					if item.Value != nil {
 						writePolFileValue(pol, item.Value, elemKey, base.RegistryValue)
@@ -383,7 +392,15 @@ func setPolicyEnabled(source PolicySource, policy *AdmxPolicy, options map[strin
 					}
 				}
 			case *EnumPolicyElement:
-				selIdx, _ := optionData.(int)
+				var selIdx int
+				switch v := optionData.(type) {
+				case int:
+					selIdx = v
+				case float64:
+					selIdx = int(v)
+				case uint32:
+					selIdx = int(v)
+				}
 				if selIdx >= 0 && selIdx < len(e.Items) {
 					item := e.Items[selIdx]
 					if item.Value != nil {
