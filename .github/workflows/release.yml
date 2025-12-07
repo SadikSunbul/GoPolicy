@@ -1,0 +1,169 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.1)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get version from tag
+        id: get_version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.ref }}".Replace("refs/tags/", "")
+          }
+          Write-Output "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Output "Version: $version"
+
+      - name: Build GoPolicy for Windows
+        shell: pwsh
+        run: |
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $env:CGO_ENABLED = "0"
+          go build -ldflags "-s -w" -o gopolicy.exe .
+          Write-Output "Build completed: gopolicy.exe"
+          Get-Item gopolicy.exe | Select-Object Name, Length, LastWriteTime
+
+      - name: Create release archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path gopolicy.exe, README.md, LICENSE -DestinationPath gopolicy-windows-amd64.zip -Force
+          Write-Output "Archive created: gopolicy-windows-amd64.zip"
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Path gopolicy.exe -Algorithm SHA256).Hash
+          $hash | Out-File -FilePath gopolicy.exe.sha256 -Encoding ASCII
+          Write-Output "SHA256: $hash" | Out-File -FilePath checksums.txt -Encoding ASCII
+          Write-Output "gopolicy.exe: $hash" | Out-File -FilePath checksums.txt -Append -Encoding ASCII
+          Write-Output "Checksum generated: $hash"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            gopolicy.exe
+            gopolicy-windows-amd64.zip
+            gopolicy.exe.sha256
+            checksums.txt
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## GoPolicy ${{ steps.get_version.outputs.VERSION }}
+
+            ### 📦 Downloads
+
+            - **Windows (amd64)**: [gopolicy.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/gopolicy.exe)
+            - **Windows Archive**: [gopolicy-windows-amd64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/gopolicy-windows-amd64.zip)
+
+            ### 🔐 Checksums
+
+            SHA256 checksums are included in the release files.
+
+            ### 🚀 Quick Start
+
+            1. Download `gopolicy.exe`
+            2. Run as Administrator: `gopolicy.exe`
+            3. Open browser: `http://localhost:8080`
+
+            ### 📖 Documentation
+
+            See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for full documentation.
+
+            ### ✨ Features
+
+            - ✅ Works on all Windows versions (Home, Pro, Enterprise, Server)
+            - 🌐 Modern web-based interface
+            - 📝 Full ADMX/ADML support
+            - 💾 Registry-based policy management
+            - 🔍 Advanced search functionality
+            - 🎨 Dark mode UI
+
+            ### 📝 Changelog
+
+            See [GitHub Releases](https://github.com/${{ github.repository }}/releases) for detailed changelog.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install ORAS CLI
+        shell: pwsh
+        run: |
+          $orasVersion = "1.1.0"
+          $orasUrl = "https://github.com/oras-project/oras/releases/download/v${orasVersion}/oras_${orasVersion}_windows_amd64.zip"
+          Invoke-WebRequest -Uri $orasUrl -OutFile oras.zip
+          Expand-Archive -Path oras.zip -DestinationPath . -Force
+          Move-Item -Path "oras.exe" -Destination "oras.exe" -Force
+          .\oras.exe version
+
+      - name: Push to GitHub Packages as OCI Artifact
+        shell: pwsh
+        env:
+          ORAS_REGISTRY: ${{ env.REGISTRY }}
+          ORAS_REPO: ${{ env.IMAGE_NAME }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          $token = "${{ secrets.GITHUB_TOKEN }}"
+          $registry = "${{ env.REGISTRY }}"
+          $repo = "${{ env.IMAGE_NAME }}"
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          
+          # Create manifest file
+          $manifest = @{
+            name = "gopolicy"
+            version = $version
+            description = "GoPolicy - Windows Group Policy Editor"
+            platform = "windows/amd64"
+            binary = "gopolicy.exe"
+          } | ConvertTo-Json
+          $manifest | Out-File -FilePath manifest.json -Encoding UTF8
+          
+          # Push binary and files to GitHub Packages
+          .\oras.exe push "${registry}/${repo}:${version}" `
+            --username "${{ github.actor }}" `
+            --password "$token" `
+            gopolicy.exe:application/vnd.microsoft.windows.executable `
+            README.md:text/plain `
+            LICENSE:text/plain `
+            manifest.json:application/json
+          
+          # Also tag as latest
+          .\oras.exe push "${registry}/${repo}:latest" `
+            --username "${{ github.actor }}" `
+            --password "$token" `
+            gopolicy.exe:application/vnd.microsoft.windows.executable `
+            README.md:text/plain `
+            LICENSE:text/plain `
+            manifest.json:application/json
+          
+          Write-Output "Pushed to GitHub Packages: ${registry}/${repo}:${version}"
