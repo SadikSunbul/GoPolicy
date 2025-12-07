@@ -3,8 +3,10 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"gopolicy/internal/policy"
 )
@@ -197,6 +199,36 @@ func (h *PolicyHandler) HandleSave(w http.ResponseWriter, r *http.Request) {
 	respondSuccess(w, map[string]interface{}{
 		"success": true,
 		"message": "Changes saved",
+	})
+}
+
+// HandleRefreshExplorer restarts Windows Explorer
+func (h *PolicyHandler) HandleRefreshExplorer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Kill explorer.exe
+	killCmd := exec.Command("taskkill", "/F", "/IM", "explorer.exe")
+	if err := killCmd.Run(); err != nil {
+		// If explorer is not running, that's okay
+		// We'll just try to start it
+	}
+
+	// Wait a moment for the process to fully terminate
+	time.Sleep(500 * time.Millisecond)
+
+	// Start explorer.exe
+	startCmd := exec.Command("explorer.exe")
+	if err := startCmd.Start(); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to restart Explorer: %v", err))
+		return
+	}
+
+	respondSuccess(w, map[string]interface{}{
+		"success": true,
+		"message": "Windows Explorer restarted successfully",
 	})
 }
 

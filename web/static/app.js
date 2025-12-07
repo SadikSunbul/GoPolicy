@@ -8,7 +8,6 @@ let currentSearchResults = null;
 // On page load
 document.addEventListener('DOMContentLoaded', () => {
     loadCategories();
-    loadSources();
 });
 
 // Load categories
@@ -37,7 +36,7 @@ function renderCategories() {
     userSection.className = 'category-section';
     const userHeader = document.createElement('div');
     userHeader.className = 'category-section-header';
-    userHeader.innerHTML = '👤 Kullanıcı Yapılandırması';
+    userHeader.innerHTML = 'User Configuration';
     userHeader.onclick = () => toggleSection(userSection);
     userSection.appendChild(userHeader);
     
@@ -45,7 +44,7 @@ function renderCategories() {
     userContent.className = 'category-section-content';
     userContent.style.display = 'block'; // Start expanded
     if (categoriesData.user.length === 0) {
-        userContent.innerHTML = '<p class="loading">Kullanıcı kategorileri yükleniyor...</p>';
+        userContent.innerHTML = '<p class="loading">Loading user categories...</p>';
     } else {
         categoriesData.user.forEach(cat => {
             userContent.appendChild(renderCategoryNode(cat));
@@ -53,7 +52,7 @@ function renderCategories() {
     }
     userSection.appendChild(userContent);
     userSection.classList.add('expanded'); // Mark as expanded
-    userHeader.innerHTML = '▼ 👤 Kullanıcı Yapılandırması'; // Add arrow for expanded state
+    userHeader.innerHTML = '▼ User Configuration'; // Add arrow for expanded state
     tree.appendChild(userSection);
     
     // Computer Configuration Section
@@ -61,7 +60,7 @@ function renderCategories() {
     computerSection.className = 'category-section';
     const computerHeader = document.createElement('div');
     computerHeader.className = 'category-section-header';
-    computerHeader.innerHTML = '▼ 🖥️ Bilgisayar Yapılandırması';
+    computerHeader.innerHTML = '▼ Computer Configuration';
     computerHeader.onclick = () => toggleSection(computerSection);
     computerSection.appendChild(computerHeader);
     
@@ -69,7 +68,7 @@ function renderCategories() {
     computerContent.className = 'category-section-content';
     computerContent.style.display = 'block'; // Start expanded
     if (categoriesData.computer.length === 0) {
-        computerContent.innerHTML = '<p class="loading">Bilgisayar kategorileri yükleniyor...</p>';
+        computerContent.innerHTML = '<p class="loading">Loading computer categories...</p>';
     } else {
         categoriesData.computer.forEach(cat => {
             computerContent.appendChild(renderCategoryNode(cat));
@@ -117,7 +116,7 @@ function renderCategoryNode(category) {
             ${toggleIcon}
         </span>
         <span class="category-name" onclick="selectCategory('${category.id}', event)">
-            📁 ${category.name} (${category.policyCount})
+            ${category.name} <span style="color: var(--text-light); font-size: 0.8125rem;">(${category.policyCount})</span>
         </span>
     `;
     div.appendChild(headerDiv);
@@ -228,22 +227,33 @@ function renderPolicies(policies) {
     policies.forEach(policy => {
         const div = document.createElement('div');
         div.className = 'policy-item';
-        div.onclick = () => openPolicyEditor(policy.id);
+        div.dataset.policyId = policy.id;
+        div.onclick = () => {
+            // Remove active class from all policy items
+            document.querySelectorAll('.policy-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            // Add active class to clicked item
+            div.classList.add('active');
+            openPolicyEditor(policy.id);
+        };
         
         const stateClass = policy.state.toLowerCase().replace(' ', '-');
         
         div.innerHTML = `
-            <h4>⚙️ ${policy.name}</h4>
+            <h4>${policy.name}</h4>
             <p>${policy.description || 'No description'}</p>
-            <span class="policy-state ${stateClass}">${policy.state}</span>
-            <small style="color: #888; margin-left: 10px;">${policy.section}</small>
+            <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+                <span class="policy-state ${stateClass}">${policy.state}</span>
+                <small style="color: var(--text-light); font-size: 0.8125rem;">${policy.section}</small>
+            </div>
         `;
         
         list.appendChild(div);
     });
 }
 
-// Open policy editor
+// Open policy editor in right panel
 async function openPolicyEditor(policyId) {
     try {
         const response = await fetch(`/api/policy/${encodeURIComponent(policyId)}`);
@@ -251,11 +261,16 @@ async function openPolicyEditor(policyId) {
         currentPolicy = policy;
         resetApplyButton();
         
-        console.log('Policy loaded:', policy); // Debug: API'dan gelen veriyi kontrol et
+        const panel = document.getElementById('policy-detail-panel');
+        const title = document.getElementById('policy-detail-title');
+        const body = document.getElementById('policy-detail-body');
+        const mainLayout = document.querySelector('.main-layout');
         
-        const modal = document.getElementById('policy-edit-modal');
-        const title = document.getElementById('modal-title');
-        const body = document.getElementById('modal-body');
+        // Show panel and update layout
+        panel.classList.remove('hidden');
+        if (mainLayout) {
+            mainLayout.classList.add('with-panel');
+        }
         
         title.textContent = policy.name;
         
@@ -265,15 +280,15 @@ async function openPolicyEditor(policyId) {
         if (currentState === 'Enabled') stateBadgeClass = 'enabled';
         else if (currentState === 'Disabled') stateBadgeClass = 'disabled';
         
-        // Create modal content
+        // Create panel content
         let html = `
-            <p style="margin-bottom: 20px; color: #666;">${policy.description}</p>
+            <p class="policy-description">${policy.description || 'No description available'}</p>
             
             <div class="form-group">
                 <label>
                     Policy State: 
                     <span class="policy-state ${stateBadgeClass}" style="margin-left: 10px;">
-                        Şu an: ${currentState}
+                        Current: ${currentState}
                     </span>
                 </label>
                 <div class="radio-group">
@@ -297,7 +312,7 @@ async function openPolicyEditor(policyId) {
         
         // Add policy elements
         if (policy.elements && policy.elements.length > 0) {
-            html += '<h4 style="margin-top: 20px; color: #667eea;">Settings:</h4>';
+            html += '<h4 style="margin-top: 24px; color: var(--text-primary); font-size: 1rem; font-weight: 600; margin-bottom: 16px;">Settings:</h4>';
             policy.elements.forEach(elem => {
                 html += renderPolicyElement(elem);
             });
@@ -305,13 +320,16 @@ async function openPolicyEditor(policyId) {
         
         html += `
             </div>
-            <div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
+            <div class="registry-info">
                 <small><strong>Registry:</strong> ${policy.registryKey}</small>
+            </div>
+            <div class="panel-actions">
+                <button id="apply-policy-button" onclick="applyPolicy()">Apply</button>
+                <button onclick="closePolicyPanel()">Cancel</button>
             </div>
         `;
         
         body.innerHTML = html;
-        modal.style.display = 'block';
         
         // Load existing list values after DOM is ready
         if (policy.elements && policy.elements.length > 0) {
@@ -328,18 +346,46 @@ async function openPolicyEditor(policyId) {
         document.querySelectorAll('input[name="policy-state"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 const elements = document.getElementById('policy-elements');
-                elements.style.display = radio.value === 'Enabled' ? 'block' : 'none';
+                if (elements) {
+                    elements.style.display = radio.value === 'Enabled' ? 'block' : 'none';
+                }
             });
         });
         
         // Set initial state
-        const selectedState = document.querySelector('input[name="policy-state"]:checked').value;
-        document.getElementById('policy-elements').style.display = selectedState === 'Enabled' ? 'block' : 'none';
+        const selectedState = document.querySelector('input[name="policy-state"]:checked');
+        if (selectedState) {
+            const elements = document.getElementById('policy-elements');
+            if (elements) {
+                elements.style.display = selectedState.value === 'Enabled' ? 'block' : 'none';
+            }
+        }
         
     } catch (error) {
         console.error('Failed to load policy:', error);
         showError('Failed to load policy');
     }
+}
+
+// Close policy panel
+function closePolicyPanel() {
+    const panel = document.getElementById('policy-detail-panel');
+    const mainLayout = document.querySelector('.main-layout');
+    
+    panel.classList.add('hidden');
+    currentPolicy = null;
+    
+    // Remove active class from all policy items
+    document.querySelectorAll('.policy-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Update layout to remove panel
+    if (mainLayout) {
+        mainLayout.classList.remove('with-panel');
+    }
+    
+    resetApplyButton();
 }
 
 // Render policy element
@@ -364,10 +410,10 @@ function renderPolicyElement(elem) {
             }
             html += `<input type="text" class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="text" placeholder="${escapeHtml(elem.label || '')}"${textAttrs}>`;
             if (hasValue) {
-                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı değer yüklendi</small>`;
+                html += `<small style="display: block; color: var(--success-color); margin-top: 6px; font-weight: 500; font-size: 0.8125rem;">✓ Saved value loaded</small>`;
             }
             if (elem.maxLength) {
-                html += `<small style="display: block; color: #666; margin-top: 3px;">Maksimum uzunluk: ${elem.maxLength} karakter</small>`;
+                html += `<small style="display: block; color: var(--text-light); margin-top: 6px; font-size: 0.8125rem;">Maximum length: ${elem.maxLength} characters</small>`;
             }
             break;
         
@@ -388,10 +434,10 @@ function renderPolicyElement(elem) {
             }
             html += `<input type="number" class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="decimal" placeholder="${escapeHtml(elem.label || '')}"${numAttrs}>`;
             if (hasNumValue) {
-                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı değer: ${elem.defaultValue}</small>`;
+                html += `<small style="display: block; color: var(--success-color); margin-top: 6px; font-weight: 500; font-size: 0.8125rem;">✓ Saved value: ${elem.defaultValue}</small>`;
             }
             if (elem.minValue !== undefined || elem.maxValue !== undefined) {
-                html += `<small style="display: block; color: #666; margin-top: 3px;">Değer aralığı: ${elem.minValue || 0} - ${elem.maxValue || 'sınırsız'}</small>`;
+                html += `<small style="display: block; color: var(--text-light); margin-top: 6px; font-size: 0.8125rem;">Value range: ${elem.minValue || 0} - ${elem.maxValue || 'unlimited'}</small>`;
             }
             break;
         
@@ -399,17 +445,17 @@ function renderPolicyElement(elem) {
             const boolChecked = elem.defaultValue === true;
             html += `<div style="display: flex; align-items: center; gap: 10px;">
                 <input type="checkbox" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="boolean" ${boolChecked ? 'checked' : ''}>
-                <label for="elem-${elem.id}" style="cursor: pointer; margin: 0;">Etkinleştir</label>
+                <label for="elem-${elem.id}" style="cursor: pointer; margin: 0;">Enable</label>
             </div>`;
             if (elem.defaultValue !== undefined && elem.defaultValue !== null) {
-                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı değer: ${boolChecked ? 'Açık' : 'Kapalı'}</small>`;
+                html += `<small style="display: block; color: var(--success-color); margin-top: 6px; font-weight: 500; font-size: 0.8125rem;">✓ Saved value: ${boolChecked ? 'On' : 'Off'}</small>`;
             }
             break;
         
         case 'enum':
             html += `<select class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="enum"${elem.required ? ' required' : ''}>`;
             if (!elem.required) {
-                html += `<option value="">-- Seçin --</option>`;
+                html += `<option value="">-- Select --</option>`;
             }
             let selectedOptionName = null;
             if (elem.options && elem.options.length > 0) {
@@ -419,11 +465,11 @@ function renderPolicyElement(elem) {
                     html += `<option value="${opt.index}"${selected}>${escapeHtml(opt.displayName)}</option>`;
                 });
             } else {
-                html += `<option value="">Seçenek bulunamadı</option>`;
+                html += `<option value="">No options available</option>`;
             }
             html += '</select>';
             if (selectedOptionName) {
-                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ Kayıtlı seçim: ${escapeHtml(selectedOptionName)}</small>`;
+                html += `<small style="display: block; color: var(--success-color); margin-top: 6px; font-weight: 500; font-size: 0.8125rem;">✓ Saved selection: ${escapeHtml(selectedOptionName)}</small>`;
             }
             break;
         
@@ -443,12 +489,12 @@ function renderPolicyElement(elem) {
                     hasMultiText = multiTextValue.length > 0;
                 }
             }
-            html += `<textarea class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="multitext" rows="4" placeholder="Her satıra bir değer girin">${escapeHtml(multiTextValue)}</textarea>`;
+            html += `<textarea class="form-control" id="elem-${elem.id}" data-element-id="${elem.id}" data-element-type="multitext" rows="4" placeholder="Enter one value per line">${escapeHtml(multiTextValue)}</textarea>`;
             if (hasMultiText) {
                 const lineCount = Array.isArray(elem.defaultValue) ? elem.defaultValue.length : multiTextValue.split('\n').filter(l => l.trim()).length;
-                html += `<small style="display: block; color: #4caf50; margin-top: 3px; font-weight: 600;">✓ ${lineCount} satır kayıtlı değer yüklendi</small>`;
+                html += `<small style="display: block; color: var(--success-color); margin-top: 6px; font-weight: 500; font-size: 0.8125rem;">✓ ${lineCount} lines of saved values loaded</small>`;
             } else {
-                html += `<small style="display: block; color: #666; margin-top: 3px;">Her satıra bir değer girin</small>`;
+                html += `<small style="display: block; color: var(--text-light); margin-top: 6px; font-size: 0.8125rem;">Enter one value per line</small>`;
             }
             break;
         
@@ -469,10 +515,10 @@ function createListInputHTML(elem) {
     html += `<div class="list-input" style="display: flex; gap: 10px; margin-bottom: 10px;">`;
     
     if (isKeyValue) {
-        html += `<input type="text" class="form-control" data-list-key="true" placeholder="Anahtar" style="flex: 1;">`;
-        html += `<input type="text" class="form-control" data-list-value="true" placeholder="Değer" style="flex: 1;">`;
+        html += `<input type="text" class="form-control" data-list-key="true" placeholder="Key" style="flex: 1;">`;
+        html += `<input type="text" class="form-control" data-list-value="true" placeholder="Value" style="flex: 1;">`;
     } else {
-        html += `<input type="text" class="form-control" data-list-value="true" placeholder="Değer ekle" style="flex: 1;">`;
+        html += `<input type="text" class="form-control" data-list-value="true" placeholder="Add value" style="flex: 1;">`;
     }
     
     html += `<button type="button" class="btn btn-primary" onclick="addListItem('${wrapperId}', ${isKeyValue})" style="padding: 8px 15px;">+</button>`;
@@ -501,7 +547,7 @@ function loadListValues(elem) {
             item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f5f5f5; border-radius: 4px; margin-bottom: 5px;';
             item.dataset.key = key;
             item.dataset.value = value;
-            item.innerHTML = `<span><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Sil</button>`;
+            item.innerHTML = `<span><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>`;
             itemsContainer.appendChild(item);
         }
     } else if (Array.isArray(defaultValue)) {
@@ -510,7 +556,7 @@ function loadListValues(elem) {
             item.className = 'list-item';
             item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f5f5f5; border-radius: 4px; margin-bottom: 5px;';
             item.dataset.value = value;
-            item.innerHTML = `<span>${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Sil</button>`;
+            item.innerHTML = `<span>${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>`;
             itemsContainer.appendChild(item);
         });
     }
@@ -531,7 +577,7 @@ function addListItem(wrapperId, isKeyValue) {
         const value = valueInput.value.trim();
         
         if (!key || !value) {
-            alert('Lütfen hem anahtar hem değer girin');
+            alert('Please enter both key and value');
             return;
         }
         
@@ -540,7 +586,7 @@ function addListItem(wrapperId, isKeyValue) {
         item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f5f5f5; border-radius: 4px; margin-bottom: 5px;';
         item.dataset.key = key;
         item.dataset.value = value;
-        item.innerHTML = `<span><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Sil</button>`;
+        item.innerHTML = `<span><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>`;
         
         container.appendChild(item);
         keyInput.value = '';
@@ -551,7 +597,7 @@ function addListItem(wrapperId, isKeyValue) {
         const value = valueInput.value.trim();
         
         if (!value) {
-            alert('Lütfen bir değer girin');
+            alert('Please enter a value');
             return;
         }
         
@@ -559,7 +605,7 @@ function addListItem(wrapperId, isKeyValue) {
         item.className = 'list-item';
         item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f5f5f5; border-radius: 4px; margin-bottom: 5px;';
         item.dataset.value = value;
-        item.innerHTML = `<span>${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Sil</button>`;
+        item.innerHTML = `<span>${escapeHtml(value)}</span><button onclick="this.parentElement.remove()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>`;
         
         container.appendChild(item);
         valueInput.value = '';
@@ -710,7 +756,7 @@ async function applyPolicy() {
                 }
             }
             showSuccess(resultMessage);
-            closeModal();
+            closePolicyPanel();
             // Refresh policy list
             if (currentCategory) {
                 await loadPolicies(currentCategory);
@@ -735,40 +781,28 @@ async function applyPolicy() {
     }
 }
 
-// Close modal
+// Close modal (kept for compatibility, redirects to closePolicyPanel)
 function closeModal() {
-    document.getElementById('policy-edit-modal').style.display = 'none';
-    currentPolicy = null;
-    resetApplyButton();
+    closePolicyPanel();
 }
 
-// Load sources
-async function loadSources() {
+// Refresh Explorer
+async function refreshExplorer() {
     try {
-        const response = await fetch('/api/sources');
-        const sources = await response.json();
-        console.log('Loaded sources:', sources);
-    } catch (error) {
-        console.error('Failed to load sources:', error);
-    }
-}
-
-// Save policies
-async function savePolicies() {
-    try {
-        const response = await fetch('/api/save', {
+        const response = await fetch('/api/refresh-explorer', {
             method: 'POST'
         });
         
         if (response.ok) {
             const result = await response.json();
-            showSuccess(result.message || 'Changes saved!');
+            showSuccess(result.message || 'Windows Explorer restarted successfully');
         } else {
-            showError('Save failed');
+            const errorData = await response.json().catch(() => ({}));
+            showError(errorData.error || errorData.message || 'Failed to restart Explorer');
         }
     } catch (error) {
-        console.error('Save error:', error);
-        showError('Save error');
+        console.error('Refresh Explorer error:', error);
+        showError('Failed to restart Explorer: ' + error.message);
     }
 }
 
@@ -814,7 +848,7 @@ function showNotification(message, type) {
 
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
-    notification.innerHTML = `${type === 'error' ? '❌' : '✅'} <span>${message}</span>`;
+    notification.innerHTML = `<span>${message}</span>`;
 
     container.appendChild(notification);
 
@@ -827,13 +861,7 @@ function showNotification(message, type) {
     }, 4000);
 }
 
-// Close modal when clicking outside
-window.onclick = function(event) {
-    const modal = document.getElementById('policy-edit-modal');
-    if (event.target === modal) {
-        closeModal();
-    }
-}
+// Modal click handler removed - using side panel now
 
 // ======== SEARCH FUNCTIONALITY ========
 
@@ -880,7 +908,7 @@ async function performSearch(query, section) {
         
     } catch (error) {
         console.error('Search error:', error);
-        showError('Arama başarısız oldu');
+        showError('Search failed');
     }
 }
 
@@ -895,23 +923,23 @@ function displaySearchResults(data, section) {
     
     if (section === 'user') {
         results = data.user || [];
-        sectionName = 'Kullanıcı';
+        sectionName = 'User';
     } else if (section === 'computer') {
         results = data.computer || [];
-        sectionName = 'Bilgisayar';
+        sectionName = 'Computer';
     } else if (section === 'both') {
         // Combine both user and computer results
         const userResults = data.user || [];
         const computerResults = data.computer || [];
         results = [...userResults, ...computerResults];
-        sectionName = 'Tüm';
+        sectionName = 'All';
     }
     
     // Update info panel
     infoPanel.innerHTML = `
-        <h3>🔍 Arama Sonuçları</h3>
-        <p><strong>${results.length}</strong> ${sectionName.toLowerCase()} politika bulundu.</p>
-        <p style="color: #666; font-size: 14px;">Arama: "${escapeHtml(data.query)}"</p>
+        <h3>Search Results</h3>
+        <p><strong>${results.length}</strong> ${sectionName.toLowerCase()} polic${results.length === 1 ? 'y' : 'ies'} found.</p>
+        <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 4px;">Search: "${escapeHtml(data.query)}"</p>
     `;
     
     // Clear and show results
@@ -919,7 +947,7 @@ function displaySearchResults(data, section) {
     
     if (results.length === 0) {
         policiesList.innerHTML = `<p style="padding: 20px; text-align: center; color: #666;">
-            Sonuç bulunamadı.
+            No results found.
         </p>`;
         return;
     }
@@ -928,20 +956,29 @@ function displaySearchResults(data, section) {
     results.forEach(policy => {
         const div = document.createElement('div');
         div.className = 'policy-item search-result';
-        div.onclick = () => openPolicyEditor(policy.id);
+        div.dataset.policyId = policy.id;
+        div.onclick = () => {
+            // Remove active class from all policy items
+            document.querySelectorAll('.policy-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            // Add active class to clicked item
+            div.classList.add('active');
+            openPolicyEditor(policy.id);
+        };
         
         const stateClass = policy.state.toLowerCase().replace(' ', '-');
         
         div.innerHTML = `
-            <h4>⚙️ ${escapeHtml(policy.name)}</h4>
-            <p>${escapeHtml(policy.description || 'Açıklama yok')}</p>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-                <div>
+            <h4>${escapeHtml(policy.name)}</h4>
+            <p>${escapeHtml(policy.description || 'No description')}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
                     <span class="policy-state ${stateClass}">${policy.state}</span>
-                    <small style="color: #888; margin-left: 10px;">${policy.section}</small>
+                    <small style="color: var(--text-light); font-size: 0.8125rem;">${policy.section}</small>
                 </div>
-                <small style="color: #667eea; font-size: 11px;">
-                    📁 ${escapeHtml(policy.categoryName || 'Kategori yok')}
+                <small style="color: var(--text-secondary); font-size: 0.8125rem;">
+                    ${escapeHtml(policy.categoryName || 'No category')}
                 </small>
             </div>
         `;
@@ -962,7 +999,7 @@ function clearSearchResults() {
     const policiesList = document.getElementById('policies');
     const infoPanel = document.getElementById('policy-info');
     
-    policiesList.innerHTML = '<p>Bir kategori seçin veya arama yapın.</p>';
+    policiesList.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">Select a category or search for policies.</p>';
     infoPanel.innerHTML = `
         <h3>Info Panel</h3>
         <p>Select a category or policy.</p>

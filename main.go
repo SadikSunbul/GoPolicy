@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -16,6 +17,9 @@ import (
 
 //go:embed web/static/*
 var staticFiles embed.FS
+
+//go:embed docs/images/gopolicylogo.png
+var logoFile []byte
 
 func main() {
 	fmt.Println("Policy Plus - Go Edition")
@@ -52,6 +56,12 @@ func main() {
 	staticFS, _ := fs.Sub(staticFiles, "web/static")
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
+	// Logo file
+	mux.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(logoFile)
+	})
+
 	// API endpoints
 	handler, err := handlers.NewPolicyHandler(workspace)
 	if err != nil {
@@ -65,10 +75,16 @@ func main() {
 	mux.HandleFunc("/api/sources", handler.HandleSources)
 	mux.HandleFunc("/api/save", handler.HandleSave)
 	mux.HandleFunc("/api/search", handler.HandleSearch)
+	mux.HandleFunc("/api/refresh-explorer", handler.HandleRefreshExplorer)
 
-	port := ":8080"
+	// Parse command line flags
+	portFlag := flag.Int("p", 8080, "Port number to run the server on")
+	flag.Parse()
+
+	port := fmt.Sprintf(":%d", *portFlag)
 	fmt.Printf("\nStarting web interface: http://localhost%s\n", port)
 	fmt.Println("Open in your browser and start using it!")
+	fmt.Printf("Press Ctrl+C to stop the server\n\n")
 
 	if err := http.ListenAndServe(port, mux); err != nil {
 		log.Fatal(err)
