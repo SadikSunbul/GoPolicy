@@ -643,21 +643,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 📞 Support & Contact
-
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/SadikSunbul/GoPolicy/issues)
-- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/SadikSunbul/GoPolicy/discussions)
-- 📧 **Email**: [Your email if you want to share]
-- 🌐 **Website**: [Your website if you have one]
-
----
-
-## ⭐ Star History
-
-If you find this project useful, please consider giving it a star on GitHub!
-
----
-
 <div align="center">
 
 **⭐ If you liked this project, don't forget to give it a star! ⭐**
