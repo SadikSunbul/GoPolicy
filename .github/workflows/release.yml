@@ -135,8 +135,9 @@ jobs:
         run: |
           $token = "${{ secrets.GITHUB_TOKEN }}"
           $registry = "${{ env.REGISTRY }}"
-          $repo = "${{ env.IMAGE_NAME }}"
+          $repo = "${{ env.IMAGE_NAME }}".ToLower()
           $version = "${{ steps.get_version.outputs.VERSION }}"
+          $username = "${{ github.actor }}"
           
           # Create manifest file
           $manifest = @{
@@ -148,22 +149,30 @@ jobs:
           } | ConvertTo-Json
           $manifest | Out-File -FilePath manifest.json -Encoding UTF8
           
-          # Push binary and files to GitHub Packages
-          .\oras.exe push "${registry}/${repo}:${version}" `
-            --username "${{ github.actor }}" `
-            --password "$token" `
-            gopolicy.exe:application/vnd.microsoft.windows.executable `
-            README.md:text/plain `
-            LICENSE:text/plain `
-            manifest.json:application/json
+          # Push binary and files to GitHub Packages using password-stdin
+          $orasArgs = @(
+            "push",
+            "${registry}/${repo}:${version}",
+            "--username", $username,
+            "--password-stdin",
+            "gopolicy.exe:application/vnd.microsoft.windows.executable",
+            "README.md:text/plain",
+            "LICENSE:text/plain",
+            "manifest.json:application/json"
+          )
+          $token | .\oras.exe $orasArgs
           
           # Also tag as latest
-          .\oras.exe push "${registry}/${repo}:latest" `
-            --username "${{ github.actor }}" `
-            --password "$token" `
-            gopolicy.exe:application/vnd.microsoft.windows.executable `
-            README.md:text/plain `
-            LICENSE:text/plain `
-            manifest.json:application/json
+          $orasArgsLatest = @(
+            "push",
+            "${registry}/${repo}:latest",
+            "--username", $username,
+            "--password-stdin",
+            "gopolicy.exe:application/vnd.microsoft.windows.executable",
+            "README.md:text/plain",
+            "LICENSE:text/plain",
+            "manifest.json:application/json"
+          )
+          $token | .\oras.exe $orasArgsLatest
           
-          Write-Output "Pushed to GitHub Packages: ${registry}/${repo}:${version}"
+          Write-Output "Successfully pushed to GitHub Packages: ${registry}/${repo}:${version}"
