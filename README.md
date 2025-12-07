@@ -57,6 +57,44 @@ While PolicyPlus is a desktop application, Go Policy is a web-based solution tha
 
 ---
 
+## 🎯 What Can You Do with Go Policy?
+
+Go Policy allows you to manage a wide range of Windows system and user settings through Group Policy. Here are some common use cases:
+
+**System Management:**
+- 🔒 **Block/enable USB ports** - Control USB device access
+- 🖼️ **Prevent wallpaper changes** - Lock desktop customization
+- 🎨 **Customize Start menu** - Configure Start menu appearance and behavior
+- 🌐 **Manage network settings** - Control network connection policies
+- 🔐 **Apply security policies** - Enforce security configurations
+- 🔄 **Control Windows Update** - Manage update settings and policies
+- 📱 **Device restrictions** - Limit access to specific devices or features
+- 🚫 **Application control** - Block or allow specific applications
+- 🔑 **Password policies** - Configure password requirements
+- 📂 **File system access** - Control access to drives and folders
+
+**And hundreds more system settings...**
+
+### Integration with Your Projects
+
+Go Policy provides **RESTful API endpoints** that allow you to integrate Group Policy management into your own applications and automation scripts. Whether you're building:
+
+- **Configuration management tools** - Automate policy deployment
+- **IT administration dashboards** - Centralized policy management
+- **DevOps pipelines** - Policy enforcement in CI/CD workflows
+- **Monitoring systems** - Track and audit policy changes
+- **Custom automation scripts** - Programmatic policy configuration
+
+You can use the REST API to:
+- List and search policies programmatically
+- Read current policy states
+- Apply policy changes via API calls
+- Integrate with existing infrastructure management tools
+
+See the [API Documentation](#-api-documentation) section for detailed endpoint information and examples.
+
+---
+
 ## 🎯 Main Goals
 
 1. **Universal Access**: Works on all Windows versions including Home editions
